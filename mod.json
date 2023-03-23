@@ -1,0 +1,13 @@
+{
+	"geode": "1.0.0-beta.10",
+	"version": "v1.0.0",
+	"id": "hjfod.mouse_api",
+	"name": "Mouse API",
+	"developer": "HJfod",
+	"description": "Support for more mouse buttons & hovering",
+	"api": {
+		"include": [
+			"include/*.hpp"
+		]
+	}
+}

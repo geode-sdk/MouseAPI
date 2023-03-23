@@ -1,5 +1,6 @@
 #include "../include/API.hpp"
 #include <Geode/utils/cocos.hpp>
+#include <Geode/utils/ranges.hpp>
 #include <Geode/cocos/robtop/glfw/glfw3.h>
 
 using namespace geode::prelude;
@@ -65,8 +66,8 @@ CCPoint convertMouseCoords(double x, double y) {
     return ccp(mouse.x, 1.f - mouse.y) * winSize;
 }
 
-MouseEvent::MouseEvent(CCPoint const& position)
-  : m_position(position) {}
+MouseEvent::MouseEvent(CCNode* target, CCPoint const& position)
+  : m_target(target), m_position(position) {}
 
 void MouseEvent::swallow() {
 	m_swallow = true;
@@ -80,8 +81,15 @@ cocos2d::CCPoint MouseEvent::getPosition() const {
 	return m_position;
 }
 
+CCNode* MouseEvent::getTarget() const {
+	return m_target;
+}
+
+MouseClickEvent::MouseClickEvent(CCNode* target, MouseButton button, bool down, CCPoint const& position)
+  : MouseEvent(target, position), m_button(button), m_down(down) {}
+
 MouseClickEvent::MouseClickEvent(MouseButton button, bool down, CCPoint const& position)
-  : MouseEvent(position), m_button(button), m_down(down) {}
+  : MouseClickEvent(nullptr, button, down, position) {}
 
 MouseButton MouseClickEvent::getButton() const {
 	return m_button;
@@ -92,21 +100,16 @@ bool MouseClickEvent::isDown() const {
 }
 
 MouseMoveEvent::MouseMoveEvent(CCPoint const& position)
-  : MouseEvent(position) {}
+  : MouseMoveEvent(nullptr, position) {}
 
-MouseHoverEvent::MouseHoverEvent(bool enter, CCPoint const& position)
-  : MouseEvent(position), m_enter(enter) {}
-
-bool MouseHoverEvent::isEnter() const {
-	return m_enter;
-}
-
-bool MouseHoverEvent::isLeave() const {
-	return !m_enter;
-}
+MouseMoveEvent::MouseMoveEvent(CCNode* target, CCPoint const& position)
+  : MouseEvent(target, position) {}
 
 MouseScrollEvent::MouseScrollEvent(float deltaY, float deltaX, CCPoint const& position)
-  : MouseEvent(position), m_deltaY(deltaY), m_deltaX(deltaX) {}
+  : MouseScrollEvent(nullptr, deltaY, deltaX, position) {}
+
+MouseScrollEvent::MouseScrollEvent(CCNode* target, float deltaY, float deltaX, CCPoint const& position)
+  : MouseEvent(target, position), m_deltaY(deltaY), m_deltaX(deltaX) {}
 
 float MouseScrollEvent::getDeltaY() const {
 	return m_deltaY;
@@ -116,37 +119,100 @@ float MouseScrollEvent::getDeltaX() const {
 	return m_deltaX;
 }
 
+MouseHoverEvent::MouseHoverEvent(CCNode* target, bool enter, CCPoint const& position)
+  : MouseEvent(target, position), m_enter(enter) {}
+
+bool MouseHoverEvent::isEnter() const {
+	return m_enter;
+}
+
+bool MouseHoverEvent::isLeave() const {
+	return !m_enter;
+}
+
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
-	if (Mouse::get()->getCapturing() && m_target != Mouse::get()->getCapturing()) {
-		return ListenerResult::Propagate;
-	}
+	log::info(__FUNCTION__);
 	if (m_target) {
-		if (m_target->boundingBox().containsPoint(event->getPosition())) {
-			if (!m_hovered) {
-				MouseHoverEvent(true, event->getPosition()).post();
+		auto inside = m_target->boundingBox().containsPoint(event->getPosition());
+		if (event->getTarget() == m_target || (!event->getTarget() && inside)) {
+			if (!m_hovered && inside) {
 				m_hovered = true;
+				MouseHoverEvent(m_target, true, event->getPosition()).post();
 			}
 			auto s = fn(event);
 			if (s == ListenerResult::Stop) {
 				event->swallow();
+				s_targetsReordered = false;
 			}
 			return s;
 		}
 		else {
-			if (m_hovered) {
-				MouseHoverEvent(false, event->getPosition()).post();
+			if (m_hovered && !inside) {
 				m_hovered = false;
+				MouseHoverEvent(m_target, false, event->getPosition()).post();
 			}
 			return ListenerResult::Propagate;
 		}
 	}
+	else if (!event->getTarget()) {
+		auto s = fn(event);
+		if (s == ListenerResult::Stop) {
+			event->swallow();
+			s_targetsReordered = false;
+		}
+		return s;
+	}
 	else {
-		return fn(event);
+		return ListenerResult::Propagate;
 	}
 }
 
+CCNode* MouseEventFilter::getTarget() const {
+	return m_target;
+}
+
 MouseEventFilter::MouseEventFilter(CCNode* target)
-  : m_target(target) {}
+  : m_target(target)
+{
+	s_targets.push_back(this);
+}
+
+MouseEventFilter::~MouseEventFilter() {
+	ranges::remove(s_targets, this);
+}
+
+struct NodeReorder {
+	MouseEventFilter* filter;
+	std::vector<int> tree;
+	cocos2d::CCNode* node;
+
+	NodeReorder(MouseEventFilter* filter)
+	  : node(filter->getTarget()), tree({ node->getZOrder() })
+	{
+		while (node = node->getParent()) {
+			tree.insert(tree.begin(), node->getZOrder());
+		}
+	}
+
+	bool operator<(NodeReorder const& other) const {
+		return tree < other.tree;
+	}
+};
+
+void MouseEventFilter::reorderTargets() {
+	std::set<NodeReorder> reordered;
+	for (auto& target : s_targets) {
+		reordered.emplace(target);
+	}
+	size_t i = 0;
+	for (auto& target : reordered) {
+		target.filter->m_priority = i;
+		s_targets[i++] = target.filter;
+	}
+}
+
+std::vector<MouseEventFilter*> MouseEventFilter::s_targets = {};
+bool MouseEventFilter::s_targetsReordered = false;
 
 Mouse* Mouse::get() {
 	static auto inst = new Mouse;
@@ -174,7 +240,7 @@ void Mouse::release(CCNode* target) {
 
 struct $modify(CCMouseDispatcher) {
 	bool dispatchScrollMSG(float y, float x) {
-		auto ev = MouseScrollEvent(y, x, getMousePos());
+		auto ev = MouseScrollEvent(Mouse::get()->getCapturing(), y, x, getMousePos());
 		ev.post();
 		if (ev.isSwallowed()) {
 			return true;
@@ -188,29 +254,38 @@ struct $modify(CCMouseDispatcher) {
 #ifdef GEODE_IS_WINDOWS
 #include <Geode/modify/CCEGLView.hpp>
 
+static GLFWcursorposfun originalCursorPosFun = nullptr;
+
 void __cdecl glfwPosCallback(GLFWwindow* window, double x, double y) {
-	MouseMoveEvent(convertMouseCoords(x, y)).post();
+	originalCursorPosFun(window, x, y);
+	MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y)).post();
 }
 
-void setWindowPosCallback(GLFWwindow* window) {
-	reinterpret_cast<_GLFWwindow*>(window)->callbacks.cursorPos
-	  = reinterpret_cast<GLFWcursorposfun>(&glfwPosCallback);
+void setCursorPosCallback(GLFWwindow* window) {
+	if (!originalCursorPosFun) {
+		originalCursorPosFun = reinterpret_cast<_GLFWwindow*>(window)->callbacks.cursorPos;
+		reinterpret_cast<_GLFWwindow*>(window)->callbacks.cursorPos
+		= reinterpret_cast<GLFWcursorposfun>(&glfwPosCallback);
+	}
 }
 
 $on_mod(Loaded) {
 	if (CCEGLView::get()->getWindow()) {
-		setWindowPosCallback(CCEGLView::get()->getWindow());
+		setCursorPosCallback(CCEGLView::get()->getWindow());
 	}
 };
 
 struct $modify(CCEGLView) {
 	void setupWindow(CCRect size) {
 		CCEGLView::setupWindow(size);
-		setWindowPosCallback(m_pMainWindow);
+		setCursorPosCallback(m_pMainWindow);
 	}
 
 	void onGLFWMouseCallBack(GLFWwindow* window, int button, int action, int mods) {
-		auto ev = MouseClickEvent(static_cast<MouseButton>(button), action, getMousePos());
+		auto ev = MouseClickEvent(
+			Mouse::get()->getCapturing(),
+			static_cast<MouseButton>(button), action, getMousePos()
+		);
 		ev.post();
 		if (ev.isSwallowed()) {
 			return;

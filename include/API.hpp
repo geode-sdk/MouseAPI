@@ -21,6 +21,8 @@ namespace mouse {
         Forward = 4,
     };
 
+    class MouseEventFilter;
+
     class MOUSEAPI_DLL MouseEvent : public geode::Event {
     protected:
         bool m_swallow = false;
@@ -34,6 +36,8 @@ namespace mouse {
         bool isSwallowed() const;
         cocos2d::CCPoint getPosition() const;
         cocos2d::CCNode* getTarget() const;
+
+        using Filter = MouseEventFilter;
     };
 
     class MOUSEAPI_DLL MouseClickEvent : public MouseEvent {
@@ -87,8 +91,6 @@ namespace mouse {
 
     class MOUSEAPI_DLL MouseEventFilter : public geode::EventFilter<MouseEvent> {
     protected:
-        static std::vector<MouseEventFilter*> s_targets;
-        static bool s_targetsReordered;
         cocos2d::CCNode* m_target;
         bool m_hovered = false;
         int m_priority;
@@ -101,8 +103,7 @@ namespace mouse {
         ~MouseEventFilter();
 
         cocos2d::CCNode* getTarget() const;
-
-        static void reorderTargets();
+        std::vector<int> getTargetPriority() const;
     };
 
     class MOUSEAPI_DLL Mouse {
@@ -115,5 +116,7 @@ namespace mouse {
         cocos2d::CCNode* getCapturing() const;
         static void capture(cocos2d::CCNode* target);
         static void release(cocos2d::CCNode* target);
+
+        static void reorderTargets();
     };
 }

@@ -131,8 +131,7 @@ bool MouseHoverEvent::isLeave() const {
 }
 
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
-	log::info(__FUNCTION__);
-	if (m_target) {
+	if (m_target && m_target->isVisible()) {
 		auto inside = m_target->boundingBox().containsPoint(event->getPosition());
 		if (event->getTarget() == m_target || (!event->getTarget() && inside)) {
 			if (!m_hovered && inside) {
@@ -142,7 +141,6 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			auto s = fn(event);
 			if (s == ListenerResult::Stop) {
 				event->swallow();
-				s_targetsReordered = false;
 			}
 			return s;
 		}
@@ -158,7 +156,6 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 		auto s = fn(event);
 		if (s == ListenerResult::Stop) {
 			event->swallow();
-			s_targetsReordered = false;
 		}
 		return s;
 	}
@@ -171,48 +168,47 @@ CCNode* MouseEventFilter::getTarget() const {
 	return m_target;
 }
 
+std::vector<int> MouseEventFilter::getTargetPriority() const {
+	auto node = m_target;
+	std::vector<int> tree { node->getZOrder() };
+	while (node = node->getParent()) {
+		tree.insert(tree.begin(), node->getZOrder());
+	}
+	return tree;
+}
+
 MouseEventFilter::MouseEventFilter(CCNode* target)
-  : m_target(target)
-{
-	s_targets.push_back(this);
-}
+  : m_target(target) {}
 
-MouseEventFilter::~MouseEventFilter() {
-	ranges::remove(s_targets, this);
-}
+MouseEventFilter::~MouseEventFilter() {}
 
-struct NodeReorder {
-	MouseEventFilter* filter;
-	std::vector<int> tree;
-	cocos2d::CCNode* node;
-
-	NodeReorder(MouseEventFilter* filter)
-	  : node(filter->getTarget()), tree({ node->getZOrder() })
-	{
-		while (node = node->getParent()) {
-			tree.insert(tree.begin(), node->getZOrder());
+void Mouse::reorderTargets() {
+	std::sort(
+		Event::listeners().begin(),
+		Event::listeners().end(),
+		[](EventListenerProtocol* a, EventListenerProtocol* b) {
+			auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a);
+			auto bf = typeinfo_cast<EventListener<MouseEventFilter>*>(b);
+			if (af && bf) {
+				auto ap = af->getFilter().getTargetPriority(); 
+				auto bp = bf->getFilter().getTargetPriority();
+				for (size_t i = 0; i < ap.size(); i++) {
+					if (i < bp.size()) {
+						if (ap[i] > bp[i]) {
+							return true;
+						}
+					}
+				}
+				return ap.size() < bp.size();
+			}
+			// make sure mouse listeners are at the start of the list
+			if (af) return true;
+			if (bf) return false;
+			// keep everything else in the same order
+			return true;
 		}
-	}
-
-	bool operator<(NodeReorder const& other) const {
-		return tree < other.tree;
-	}
-};
-
-void MouseEventFilter::reorderTargets() {
-	std::set<NodeReorder> reordered;
-	for (auto& target : s_targets) {
-		reordered.emplace(target);
-	}
-	size_t i = 0;
-	for (auto& target : reordered) {
-		target.filter->m_priority = i;
-		s_targets[i++] = target.filter;
-	}
+	);
 }
-
-std::vector<MouseEventFilter*> MouseEventFilter::s_targets = {};
-bool MouseEventFilter::s_targetsReordered = false;
 
 Mouse* Mouse::get() {
 	static auto inst = new Mouse;

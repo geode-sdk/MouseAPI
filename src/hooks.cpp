@@ -1,58 +1,78 @@
 #include <Geode/modify/CCLayer.hpp>
 #include <Geode/modify/CCMenu.hpp>
-#include <Geode/modify/CCMenuItemSprite.hpp>
+#include <Geode/modify/CCTouchDispatcher.hpp>
+#include <Geode/modify/AchievementNotifier.hpp>
 #include <Geode/utils/cocos.hpp>
 #include "../include/API.hpp"
 
 using namespace geode::prelude;
 using namespace mouse;
 
-struct $modify(CCLayer) {
-    bool init() {
-        if (!CCLayer::init())
-            return false;
-
-        if (!typeinfo_cast<CCMenu*>(this)) {
-            this->template addEventListener<MouseEventFilter>([&](MouseEvent*) {
-                return ListenerResult::Stop;
-            });
-            Mouse::reorderTargets();
+struct $modify(CCTouchDispatcher) {
+    void addStandardDelegate(CCTouchDelegate* delegate, int prio) {
+        CCTouchDispatcher::addStandardDelegate(delegate, prio);
+        // CCMenu is handled specially
+        if (!typeinfo_cast<CCMenu*>(delegate)) {
+            if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+                auto listener = node->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
+                    event->dispatchTouch(node);
+                    return ListenerResult::Propagate;
+                });
+                node->setAttribute("hjfod.mouse-api/listener", listener);
+                Mouse::updateListeners();
+            }
         }
-        
-        return true;
     }
+
+    void addTargetedDelegate(CCTouchDelegate* delegate, int prio, bool swallows) {
+        CCTouchDispatcher::addTargetedDelegate(delegate, prio, swallows);
+        // CCMenu is handled specially
+        if (swallows && !typeinfo_cast<CCMenu*>(delegate)) {
+            if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+                auto listener = node->template addEventListener<MouseEventFilter>([=](MouseEvent*) {
+                    return ListenerResult::Stop;
+                });
+                node->setAttribute("hjfod.mouse-api/listener", listener);
+                Mouse::updateListeners();
+            }
+        }
+    }
+
+    // void removeDelegate(CCTouchDelegate* delegate) {
+    //     if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+    //         if (auto listener = node->template getAttribute<EventListenerProtocol*>(
+    //             "hjfod.mouse-api/listener"
+    //         )) {
+    //             node->removeEventListener(listener.value());
+    //         }
+    //     }
+    //     CCTouchDispatcher::removeDelegate(delegate);
+    // }
 };
 
-struct $modify(CCMenuItemSprite) {
-    bool initWithNormalSprite(CCNode* a, CCNode* b, CCNode* c, CCObject* sender, SEL_MenuHandler selector) {
-        if (!CCMenuItemSprite::initWithNormalSprite(a, b, c, sender, selector))
+struct $modify(CCMenu) {
+    bool initWithArray(CCArray* items) {
+        if (!CCMenu::initWithArray(items))
             return false;
 
-        this->template addEventListener<MouseEventFilter>([&](MouseEvent* ev) {
-            return ListenerResult::Stop;
-        });
-        Mouse::reorderTargets();
+        auto listener = this->template addEventListener<MouseEventFilter>([=](MouseEvent* ev) {
+            CCTouch touch;
+            touch.m_point = CCDirector::get()->convertToUI(ev->getPosition());
+            if (auto item = this->itemForTouch(&touch)) {
+                return ListenerResult::Stop;
+            }
+            return ListenerResult::Propagate;
+        }, true);
+        this->setAttribute("hjfod.mouse-api/listener", listener);
+        Mouse::updateListeners();
         
         return true;
     }
 };
 
-// struct $modify(CCMenu) {
-//     bool initWithArray(CCArray* items) {
-//         if (!CCMenu::initWithArray(items))
-//             return false;
-
-//         this->template addEventListener<MouseEventFilter>([&](MouseEvent* ev) {
-//             CCTouch touch;
-//             touch.m_point = CCDirector::get()->convertToUI(ev->getPosition());
-//             if (auto item = this->itemForTouch(&touch)) {
-//                 log::info(__FUNCTION__);
-//                 return ListenerResult::Stop;
-//             }
-//             return ListenerResult::Propagate;
-//         });
-//         Mouse::reorderTargets();
-        
-//         return true;
-//     }
-// };
+struct $modify(AchievementNotifier) {
+    void willSwitchToScene(CCScene* scene) {
+        AchievementNotifier::willSwitchToScene(scene);
+        Mouse::updateListeners();
+    }
+};

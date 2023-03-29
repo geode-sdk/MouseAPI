@@ -14,9 +14,12 @@ struct $modify(CCTouchDispatcher) {
         // CCMenu is handled specially
         if (!typeinfo_cast<CCMenu*>(delegate)) {
             if (auto node = typeinfo_cast<CCNode*>(delegate)) {
-                node->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
-                    return ListenerResult::Propagate;
-                });
+                node->template addEventListener<MouseEventFilter>(
+                    "mouse"_spr,
+                    [=](MouseEvent*) {
+                        return MouseResult::Eat;
+                    }
+                );
                 Mouse::updateListeners();
             }
         }
@@ -28,14 +31,20 @@ struct $modify(CCTouchDispatcher) {
         if (typeinfo_cast<CCMenu*>(delegate)) return;
         if (auto node = typeinfo_cast<CCNode*>(delegate)) {
             if (swallows) {
-                node->template addEventListener<MouseEventFilter>([=](MouseEvent*) {
-                    return ListenerResult::Stop;
-                });
+                node->template addEventListener<MouseEventFilter>(
+                    "mouse"_spr,
+                    [=](MouseEvent*) {
+                        return MouseResult::Swallow;
+                    }
+                );
             }
             else {
-                node->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
-                    return ListenerResult::Propagate;
-                });
+                node->template addEventListener<MouseEventFilter>(
+                    "mouse"_spr,
+                    [=](MouseEvent*) {
+                        return MouseResult::Eat;
+                    }
+                );
             }
             Mouse::updateListeners();
         }
@@ -59,14 +68,17 @@ struct $modify(CCMenu) {
         if (!CCMenu::initWithArray(items))
             return false;
 
-        this->template addEventListener<MouseEventFilter>([=](MouseEvent* ev) {
-            CCTouch touch;
-            touch.m_point = CCDirector::get()->convertToUI(ev->getPosition());
-            if (auto item = this->itemForTouch(&touch)) {
-                return ListenerResult::Stop;
-            }
-            return ListenerResult::Propagate;
-        }, true);
+        this->template addEventListener<MouseEventFilter>(
+            "mouse"_spr,
+            [=](MouseEvent* ev) {
+                CCTouch touch;
+                touch.m_point = CCDirector::get()->convertToUI(ev->getPosition());
+                if (auto item = this->itemForTouch(&touch)) {
+                    return MouseResult::Swallow;
+                }
+                return MouseResult::Leave;
+            }, true
+        );
         Mouse::updateListeners();
         
         return true;

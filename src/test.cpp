@@ -32,7 +32,7 @@ protected:
             if (MouseAttributes::from(this)->isHeld(MouseButton::Right)) {
                 m_label->setString("Right-clicked!");
             }
-            return ListenerResult::Stop;
+            return MouseResult::Swallow;
         });
 
         return true;

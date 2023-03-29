@@ -83,13 +83,9 @@ bool MouseAttributes::isHovered() const {
 	return m_hovered;
 }
 
-MouseEvent::MouseEvent(
-	CCNode* target,
-	CCPoint const& position,
-	CCPoint const& prevPosition
-) : m_target(target),
-	m_position(position),
-	m_prevPosition(prevPosition) {}
+MouseEvent::MouseEvent(CCNode* target, CCPoint const& position)
+  : m_target(target),
+	m_position(position) {}
 
 void MouseEvent::swallow() {
 	m_swallow = true;
@@ -103,10 +99,6 @@ CCPoint MouseEvent::getPosition() const {
 	return m_position;
 }
 
-CCPoint MouseEvent::getPrevPosition() const {
-	return m_prevPosition;
-}
-
 CCNode* MouseEvent::getTarget() const {
 	return m_target;
 }
@@ -115,7 +107,7 @@ CCTouch* MouseEvent::createTouch() const {
 	auto touch = new CCTouch();
 	touch->autorelease();
 	touch->m_point = CCDirector::get()->convertToUI(m_position);
-	touch->m_prevPoint = CCDirector::get()->convertToUI(m_prevPosition);
+	touch->m_prevPoint = (touch->m_startPoint = touch->m_point);
 	return touch;
 }
 
@@ -125,24 +117,28 @@ CCEvent* MouseEvent::createEvent() const {
 	return event;
 }
 
+void MouseEvent::updateTouch(CCTouch* touch) const {
+	touch->m_prevPoint = touch->m_point;
+	touch->m_point = CCDirector::get()->convertToUI(m_position);
+}
+
 MouseClickEvent::MouseClickEvent(
 	CCNode* target, MouseButton button,
-	bool down, CCPoint const& pos, CCPoint const& prev
-) : MouseEvent(target, pos, prev), m_button(button), m_down(down) {}
+	bool down, CCPoint const& pos
+) : MouseEvent(target, pos), m_button(button), m_down(down) {}
 
 MouseClickEvent::MouseClickEvent(
-	MouseButton button, bool down,
-	CCPoint const& pos, CCPoint const& prev
-) : MouseClickEvent(nullptr, button, down, pos, prev) {}
+	MouseButton button, bool down, CCPoint const& pos
+) : MouseClickEvent(nullptr, button, down, pos) {}
 
-void MouseClickEvent::dispatchTouch(CCNode* target) const {
+void MouseClickEvent::dispatchTouch(CCNode* target, CCTouch* touch) const {
 	if (m_button == MouseButton::Left) {
 		if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
 			if (m_down) {
-				delegate->ccTouchBegan(this->createTouch(), this->createEvent());
+				delegate->ccTouchBegan(touch, this->createEvent());
 			}
 			else {
-				delegate->ccTouchEnded(this->createTouch(), this->createEvent());
+				delegate->ccTouchEnded(touch, this->createEvent());
 			}
 		}
 	}
@@ -156,33 +152,28 @@ bool MouseClickEvent::isDown() const {
 	return m_down;
 }
 
-MouseMoveEvent::MouseMoveEvent(CCPoint const& pos, CCPoint const& prev)
-  : MouseMoveEvent(nullptr, pos, prev) {}
+MouseMoveEvent::MouseMoveEvent(CCPoint const& pos)
+  : MouseMoveEvent(nullptr, pos) {}
 
-MouseMoveEvent::MouseMoveEvent(
-	CCNode* target, 
-	CCPoint const& pos, CCPoint const& prev
-) : MouseEvent(target, pos, prev) {}
+MouseMoveEvent::MouseMoveEvent(CCNode* target, CCPoint const& pos)
+  : MouseEvent(target, pos) {}
 
-void MouseMoveEvent::dispatchTouch(CCNode* target) const {
+void MouseMoveEvent::dispatchTouch(CCNode* target, CCTouch* touch) const {
 	if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
 		if (MouseAttributes::from(target)->isHeld(MouseButton::Left)) {
-			delegate->ccTouchMoved(this->createTouch(), this->createEvent());
+			delegate->ccTouchMoved(touch, this->createEvent());
 		}
 	}
 }
 
-MouseScrollEvent::MouseScrollEvent(
-	float deltaY, float deltaX,
-	CCPoint const& pos, CCPoint const& prev
-) : MouseScrollEvent(nullptr, deltaY, deltaX, pos, prev) {}
+MouseScrollEvent::MouseScrollEvent(float deltaY, float deltaX, CCPoint const& pos)
+  : MouseScrollEvent(nullptr, deltaY, deltaX, pos) {}
 
 MouseScrollEvent::MouseScrollEvent(
-	CCNode* target, float deltaY, float deltaX,
-	CCPoint const& pos, CCPoint const& prev
-) : MouseEvent(target, pos, prev), m_deltaY(deltaY), m_deltaX(deltaX) {}
+	CCNode* target, float deltaY, float deltaX, CCPoint const& pos
+) : MouseEvent(target, pos), m_deltaY(deltaY), m_deltaX(deltaX) {}
 
-void MouseScrollEvent::dispatchTouch(CCNode* target) const {
+void MouseScrollEvent::dispatchTouch(CCNode* target, CCTouch*) const {
 	if (auto delegate = typeinfo_cast<CCMouseDelegate*>(target)) {
 		delegate->scrollWheel(m_deltaY, m_deltaY);
 	}
@@ -196,12 +187,10 @@ float MouseScrollEvent::getDeltaX() const {
 	return m_deltaX;
 }
 
-MouseHoverEvent::MouseHoverEvent(
-	CCNode* target, bool enter, 
-	CCPoint const& pos, CCPoint const& prev
-) : MouseEvent(target, pos, prev), m_enter(enter) {}
+MouseHoverEvent::MouseHoverEvent(CCNode* target, bool enter, CCPoint const& pos)
+  : MouseEvent(target, pos), m_enter(enter) {}
 
-void MouseHoverEvent::dispatchTouch(CCNode* target) const {}
+void MouseHoverEvent::dispatchTouch(CCNode*, CCTouch*) const {}
 
 bool MouseHoverEvent::isEnter() const {
 	return m_enter;
@@ -213,30 +202,81 @@ bool MouseHoverEvent::isLeave() const {
 
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
 	if (m_target) {
+		// Events will only be dispatched to nodes in the scene that are visible
 		if (nodeIsVisible(m_target) && m_target->hasAncestor(nullptr)) {
-			auto inside = m_ignorePosition || m_target->boundingBox().containsPoint(event->getPosition());
-			if (event->getTarget() == m_target || (!event->getTarget() && inside)) {
-				if (!m_hovered && inside) {
-					m_hovered = true;
-					MouseAttributes::from(m_target)->m_hovered = true;
+			auto inside =
+				m_ignorePosition ||
+				m_target->boundingBox().containsPoint(event->getPosition());
+
+			// Events will only be dispatched to the target under the 
+			// following conditions: 
+			// 1. The target is capturing the mouse
+			// 2. When the event is dispatched, if no other target has yet 
+			// captured the mouse, another target can "eat" it, in other words 
+			// registering themselves as a "weak" target that will still 
+			// receive events
+			// 3. Nothing is capturing the mouse (event is "edible")
+			if (
+				// Is this the node the event was meant for?
+				event->getTarget() == m_target ||
+				// Is this node eating events?
+				m_eaten.data() ||
+				// Is this event inside the node and edible?
+				(!event->getTarget() && inside)
+			) {
+				auto attrs = MouseAttributes::from(m_target);
+				// Post hover event
+				if (!attrs->m_hovered && inside) {
+					attrs->m_hovered = true;
 					MouseHoverEvent(
 						m_target, true,
-						event->getPosition(),
-						event->getPrevPosition()
+						event->getPosition()
 					).post();
 				}
+				else if (attrs->m_hovered && !inside) {
+					attrs->m_hovered = false;
+					MouseHoverEvent(
+						m_target, false,
+						event->getPosition()
+					).post();
+				}
+				// Add click to held list (may be something the callback needs 
+				// to know, so needs to be set before it's called)
 				auto click = typeinfo_cast<MouseClickEvent*>(event);
 				if (click) {
 					if (click->isDown()) {
-						MouseAttributes::from(m_target)->m_heldButtons.insert(click->getButton());
+						attrs->m_heldButtons.insert(click->getButton());
 					}
 					else {
-						MouseAttributes::from(m_target)->m_heldButtons.erase(click->getButton());
+						attrs->m_heldButtons.erase(click->getButton());
 					}
 				}
 				auto s = fn(event);
-				event->dispatchTouch(m_target);
-				if (s == ListenerResult::Stop || event->getTarget() == m_target) {
+				if (s == MouseResult::Leave) {
+					// If the callback didn't want to capture the mouse, release 
+					// the hold attribute immediately
+					if (click) {
+						attrs->m_heldButtons.erase(click->getButton());
+					}
+				}
+				else {
+					// Eat if clicked
+					if (click && click->isDown()) {
+						m_eaten = event->createTouch();
+					}
+				}
+				if (m_eaten) {
+					event->updateTouch(m_eaten);
+					event->dispatchTouch(m_target, m_eaten);
+				}
+				// Release eaten only after dispatching the touch event so the 
+				// touch event can still access the touch
+				if (s != MouseResult::Leave && click && !click->isDown()) {
+					m_eaten = nullptr;	
+				}
+				// If the callback wants to swallow, or has captured the mouse, 
+				// capture the mouse and stop propagation here
+				if (s == MouseResult::Swallow || event->getTarget() == m_target) {
 					event->swallow();
 					if (click) {
 						if (click->isDown()) {
@@ -246,18 +286,21 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 							Mouse::release(m_target);
 						}
 					}
+					return ListenerResult::Stop;
 				}
-				return s;
+				return ListenerResult::Propagate;
 			}
+			// If this target doesn't get the event, propagate onwards
 			else {
-				if (m_hovered && !inside) {
-					m_hovered = false;
-					MouseAttributes::from(m_target)->m_hovered = false;
-					MouseAttributes::from(m_target)->m_heldButtons.clear();
+				auto attrs = MouseAttributes::from(m_target);
+				// Post hover leave event if necessary
+				if (attrs->m_hovered && !inside) {
+					attrs->m_hovered = false;
+					attrs->m_heldButtons.clear();
+					m_eaten = nullptr;
 					MouseHoverEvent(
 						m_target, false,
-						event->getPosition(),
-						event->getPrevPosition()
+						event->getPosition()
 					).post();
 				}
 				return ListenerResult::Propagate;
@@ -267,13 +310,17 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			return ListenerResult::Propagate;
 		}
 	}
+	// Otherwise handle global listeners, which will only be fired if no node 
+	// is capturing the mouse
 	else if (!event->getTarget()) {
 		auto s = fn(event);
-		if (s == ListenerResult::Stop) {
+		if (s == MouseResult::Swallow) {
 			event->swallow();
+			return ListenerResult::Stop;
 		}
-		return s;
+		return ListenerResult::Propagate;
 	}
+	// Otherwise keep going and find the capturing target
 	else {
 		return ListenerResult::Propagate;
 	}
@@ -303,7 +350,7 @@ void Mouse::updateListeners() {
 	s_updating = true;
 	// update only once per frame at most
 	Loader::get()->queueInGDThread([]() {
-		// log::info("sorting");
+		log::info("sorting");
 		std::sort(
 			Event::listeners().begin(),
 			Event::listeners().end(),
@@ -329,11 +376,11 @@ void Mouse::updateListeners() {
 				return true;
 			}
 		);
-		// for (auto& a : Event::listeners()) {
-		// 	if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
-		// 		log::info("{}: {}", af->getFilter().getTargetPriority(), af->getFilter().getTarget());
-		// 	}
-		// }
+		for (auto& a : Event::listeners()) {
+			if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
+				log::info("{}: {}", af->getFilter().getTargetPriority(), af->getFilter().getTarget());
+			}
+		}
 		s_updating = false;
 	});
 }
@@ -349,14 +396,6 @@ CCNode* Mouse::getCapturing() const {
 
 void Mouse::capture(CCNode* target) {
 	if (!Mouse::get()->m_swallowing) {
-		for (auto& a : Event::listeners()) {
-			if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
-				auto t = af->getFilter().getTarget();
-				if (t != target) {
-					MouseAttributes::from(t)->m_heldButtons.clear();
-				}
-			}
-		}
 		Mouse::get()->m_swallowing = target;
 	}
 }
@@ -367,8 +406,6 @@ void Mouse::release(CCNode* target) {
 	}
 }
 
-static CCPoint PREV_POS { 0, 0 };
-
 #ifdef GEODE_IS_DESKTOP
 #include <Geode/modify/CCMouseDispatcher.hpp>
 
@@ -376,7 +413,7 @@ struct $modify(CCMouseDispatcher) {
 	bool dispatchScrollMSG(float y, float x) {
 		auto ev = MouseScrollEvent(
 			Mouse::get()->getCapturing(), y, x,
-			getMousePos(), PREV_POS
+			getMousePos()
 		);
 		ev.post();
 		if (ev.isSwallowed()) {
@@ -395,8 +432,7 @@ static GLFWcursorposfun originalCursorPosFun = nullptr;
 
 void __cdecl glfwPosCallback(GLFWwindow* window, double x, double y) {
 	originalCursorPosFun(window, x, y);
-	MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y), PREV_POS).post();
-	PREV_POS = convertMouseCoords(x, y);
+	MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y)).post();
 }
 
 void setCursorPosCallback(GLFWwindow* window) {
@@ -424,7 +460,7 @@ struct $modify(CCEGLView) {
 		auto ev = MouseClickEvent(
 			Mouse::get()->getCapturing(),
 			static_cast<MouseButton>(button), action,
-			getMousePos(), PREV_POS
+			getMousePos()
 		);
 		ev.post();
 		if (ev.isSwallowed()) {

@@ -21,6 +21,12 @@ namespace mouse {
         Forward = 4,
     };
 
+    enum class MouseResult {
+        Swallow = 2,
+        Eat     = 1,
+        Leave   = 0,
+    };
+
     class Mouse;
     class MouseEventFilter;
 
@@ -44,24 +50,25 @@ namespace mouse {
         bool m_swallow = false;
         cocos2d::CCNode* m_target;
         cocos2d::CCPoint m_position;
-        cocos2d::CCPoint m_prevPosition;
 
         MouseEvent(
             cocos2d::CCNode* target,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prev
+            cocos2d::CCPoint const& position
         );
 
         cocos2d::CCTouch* createTouch() const;
         cocos2d::CCEvent* createEvent() const;
+
+        void swallow();
+        void updateTouch(cocos2d::CCTouch* touch) const;
+        virtual void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const = 0;
+
+        friend class MouseEventFilter;
     
     public:
-        void swallow();
         bool isSwallowed() const;
         cocos2d::CCPoint getPosition() const;
-        cocos2d::CCPoint getPrevPosition() const;
         cocos2d::CCNode* getTarget() const;
-        virtual void dispatchTouch(cocos2d::CCNode* target) const = 0;
 
         using Filter = MouseEventFilter;
     };
@@ -75,16 +82,14 @@ namespace mouse {
         MouseClickEvent(
             MouseButton button,
             bool down,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
         MouseClickEvent(
             cocos2d::CCNode* target, MouseButton button,
             bool down,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
-        void dispatchTouch(cocos2d::CCNode* target) const override;
+        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
 
         MouseButton getButton() const;
         bool isDown() const;
@@ -93,15 +98,13 @@ namespace mouse {
     class MOUSEAPI_DLL MouseMoveEvent : public MouseEvent {
     public:
         MouseMoveEvent(
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
         MouseMoveEvent(
             cocos2d::CCNode* target,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
-        void dispatchTouch(cocos2d::CCNode* target) const override;
+        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
     };
     
     class MOUSEAPI_DLL MouseScrollEvent : public MouseEvent {
@@ -112,16 +115,14 @@ namespace mouse {
     public:
         MouseScrollEvent(
             float deltaY, float deltaX,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
         MouseScrollEvent(
             cocos2d::CCNode* target,
             float deltaY, float deltaX,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
-        void dispatchTouch(cocos2d::CCNode* target) const override;
+        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
 
         float getDeltaY() const;
         float getDeltaX() const;
@@ -134,10 +135,9 @@ namespace mouse {
     public:
         MouseHoverEvent(
             cocos2d::CCNode* target, bool enter,
-            cocos2d::CCPoint const& position,
-            cocos2d::CCPoint const& prevPosition
+            cocos2d::CCPoint const& position
         );
-        void dispatchTouch(cocos2d::CCNode* target) const override;
+        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
 
         bool isEnter() const;
         bool isLeave() const;
@@ -146,12 +146,12 @@ namespace mouse {
     class MOUSEAPI_DLL MouseEventFilter : public geode::EventFilter<MouseEvent> {
     protected:
         cocos2d::CCNode* m_target;
-        bool m_hovered = false;
+        geode::Ref<cocos2d::CCTouch> m_eaten = nullptr;
         bool m_ignorePosition = false;
         int m_priority;
 
     public:
-        using Callback = geode::ListenerResult(MouseEvent*);
+        using Callback = MouseResult(MouseEvent*);
 
         geode::ListenerResult handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event);
         MouseEventFilter(cocos2d::CCNode* target, bool ignorePosition = false);

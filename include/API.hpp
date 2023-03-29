@@ -21,7 +21,23 @@ namespace mouse {
         Forward = 4,
     };
 
+    class Mouse;
     class MouseEventFilter;
+
+    class MouseAttributes {
+    protected:
+        std::unordered_set<MouseButton> m_heldButtons;
+        bool m_hovered = false;
+
+        friend class Mouse;
+        friend class MouseEventFilter;
+    
+    public:
+        static MouseAttributes* from(cocos2d::CCNode* node);
+
+        bool isHeld(MouseButton button) const;
+        bool isHovered() const;
+    };
 
     class MOUSEAPI_DLL MouseEvent : public geode::Event {
     protected:

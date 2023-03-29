@@ -1,6 +1,7 @@
 #include "../include/API.hpp"
 #include <Geode/utils/cocos.hpp>
 #include <Geode/utils/ranges.hpp>
+#include <Geode/modify/CCNode.hpp>
 #include <Geode/cocos/robtop/glfw/glfw3.h>
 
 using namespace geode::prelude;
@@ -66,6 +67,22 @@ CCPoint convertMouseCoords(double x, double y) {
     return ccp(mouse.x, 1.f - mouse.y) * winSize;
 }
 
+struct $modify(MouseNode, CCNode) {
+	MouseAttributes attributes;
+};
+
+MouseAttributes* MouseAttributes::from(CCNode* node) {
+	return &static_cast<MouseNode*>(node)->m_fields->attributes;
+}
+
+bool MouseAttributes::isHeld(MouseButton button) const {
+	return m_heldButtons.contains(button);
+}
+
+bool MouseAttributes::isHovered() const {
+	return m_hovered;
+}
+
 MouseEvent::MouseEvent(
 	CCNode* target,
 	CCPoint const& position,
@@ -119,12 +136,14 @@ MouseClickEvent::MouseClickEvent(
 ) : MouseClickEvent(nullptr, button, down, pos, prev) {}
 
 void MouseClickEvent::dispatchTouch(CCNode* target) const {
-	if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
-		if (m_down) {
-			delegate->ccTouchBegan(this->createTouch(), this->createEvent());
-		}
-		else {
-			delegate->ccTouchEnded(this->createTouch(), this->createEvent());
+	if (m_button == MouseButton::Left) {
+		if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
+			if (m_down) {
+				delegate->ccTouchBegan(this->createTouch(), this->createEvent());
+			}
+			else {
+				delegate->ccTouchEnded(this->createTouch(), this->createEvent());
+			}
 		}
 	}
 }
@@ -147,7 +166,7 @@ MouseMoveEvent::MouseMoveEvent(
 
 void MouseMoveEvent::dispatchTouch(CCNode* target) const {
 	if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
-		if (target->template getAttribute<bool>("hjfod.mouse-api/clicked").value_or(false)) {
+		if (MouseAttributes::from(target)->isHeld(MouseButton::Left)) {
 			delegate->ccTouchMoved(this->createTouch(), this->createEvent());
 		}
 	}
@@ -194,26 +213,30 @@ bool MouseHoverEvent::isLeave() const {
 
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
 	if (m_target) {
-		if (nodeIsVisible(m_target)) {
+		if (nodeIsVisible(m_target) && m_target->hasAncestor(nullptr)) {
 			auto inside = m_ignorePosition || m_target->boundingBox().containsPoint(event->getPosition());
 			if (event->getTarget() == m_target || (!event->getTarget() && inside)) {
 				if (!m_hovered && inside) {
 					m_hovered = true;
-					m_target->setAttribute("hjfod.mouse-api/hovered", true);
+					MouseAttributes::from(m_target)->m_hovered = true;
 					MouseHoverEvent(
 						m_target, true,
 						event->getPosition(),
 						event->getPrevPosition()
 					).post();
 				}
-				auto s = fn(event);
-				if (s == ListenerResult::Stop || event->getTarget() == m_target) {
-					auto click = typeinfo_cast<MouseClickEvent*>(event);
-					if (click) {
-						log::info("clicked {}", m_target);
-						m_target->setAttribute("hjfod.mouse-api/clicked", click->isDown());
+				auto click = typeinfo_cast<MouseClickEvent*>(event);
+				if (click) {
+					if (click->isDown()) {
+						MouseAttributes::from(m_target)->m_heldButtons.insert(click->getButton());
 					}
-					event->dispatchTouch(m_target);
+					else {
+						MouseAttributes::from(m_target)->m_heldButtons.erase(click->getButton());
+					}
+				}
+				auto s = fn(event);
+				event->dispatchTouch(m_target);
+				if (s == ListenerResult::Stop || event->getTarget() == m_target) {
 					event->swallow();
 					if (click) {
 						if (click->isDown()) {
@@ -229,8 +252,8 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			else {
 				if (m_hovered && !inside) {
 					m_hovered = false;
-					m_target->setAttribute("hjfod.mouse-api/hovered", false);
-					m_target->setAttribute("hjfod.mouse-api/clicked", false);
+					MouseAttributes::from(m_target)->m_hovered = false;
+					MouseAttributes::from(m_target)->m_heldButtons.clear();
 					MouseHoverEvent(
 						m_target, false,
 						event->getPosition(),
@@ -280,7 +303,7 @@ void Mouse::updateListeners() {
 	s_updating = true;
 	// update only once per frame at most
 	Loader::get()->queueInGDThread([]() {
-		log::info("sorting");
+		// log::info("sorting");
 		std::sort(
 			Event::listeners().begin(),
 			Event::listeners().end(),
@@ -306,6 +329,11 @@ void Mouse::updateListeners() {
 				return true;
 			}
 		);
+		// for (auto& a : Event::listeners()) {
+		// 	if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
+		// 		log::info("{}: {}", af->getFilter().getTargetPriority(), af->getFilter().getTarget());
+		// 	}
+		// }
 		s_updating = false;
 	});
 }
@@ -321,6 +349,14 @@ CCNode* Mouse::getCapturing() const {
 
 void Mouse::capture(CCNode* target) {
 	if (!Mouse::get()->m_swallowing) {
+		for (auto& a : Event::listeners()) {
+			if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
+				auto t = af->getFilter().getTarget();
+				if (t != target) {
+					MouseAttributes::from(t)->m_heldButtons.clear();
+				}
+			}
+		}
 		Mouse::get()->m_swallowing = target;
 	}
 }
@@ -384,6 +420,7 @@ struct $modify(CCEGLView) {
 	}
 
 	void onGLFWMouseCallBack(GLFWwindow* window, int button, int action, int mods) {
+		// log::info("clicked {}", button);
 		auto ev = MouseClickEvent(
 			Mouse::get()->getCapturing(),
 			static_cast<MouseButton>(button), action,

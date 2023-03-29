@@ -14,11 +14,9 @@ struct $modify(CCTouchDispatcher) {
         // CCMenu is handled specially
         if (!typeinfo_cast<CCMenu*>(delegate)) {
             if (auto node = typeinfo_cast<CCNode*>(delegate)) {
-                auto listener = node->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
-                    event->dispatchTouch(node);
+                node->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
                     return ListenerResult::Propagate;
                 });
-                node->setAttribute("hjfod.mouse-api/listener", listener);
                 Mouse::updateListeners();
             }
         }
@@ -27,14 +25,19 @@ struct $modify(CCTouchDispatcher) {
     void addTargetedDelegate(CCTouchDelegate* delegate, int prio, bool swallows) {
         CCTouchDispatcher::addTargetedDelegate(delegate, prio, swallows);
         // CCMenu is handled specially
-        if (swallows && !typeinfo_cast<CCMenu*>(delegate)) {
-            if (auto node = typeinfo_cast<CCNode*>(delegate)) {
-                auto listener = node->template addEventListener<MouseEventFilter>([=](MouseEvent*) {
+        if (typeinfo_cast<CCMenu*>(delegate)) return;
+        if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+            if (swallows) {
+                node->template addEventListener<MouseEventFilter>([=](MouseEvent*) {
                     return ListenerResult::Stop;
                 });
-                node->setAttribute("hjfod.mouse-api/listener", listener);
-                Mouse::updateListeners();
             }
+            else {
+                node->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
+                    return ListenerResult::Propagate;
+                });
+            }
+            Mouse::updateListeners();
         }
     }
 
@@ -44,6 +47,7 @@ struct $modify(CCTouchDispatcher) {
     //             "hjfod.mouse-api/listener"
     //         )) {
     //             node->removeEventListener(listener.value());
+    //             Mouse::release(node);
     //         }
     //     }
     //     CCTouchDispatcher::removeDelegate(delegate);
@@ -55,7 +59,7 @@ struct $modify(CCMenu) {
         if (!CCMenu::initWithArray(items))
             return false;
 
-        auto listener = this->template addEventListener<MouseEventFilter>([=](MouseEvent* ev) {
+        this->template addEventListener<MouseEventFilter>([=](MouseEvent* ev) {
             CCTouch touch;
             touch.m_point = CCDirector::get()->convertToUI(ev->getPosition());
             if (auto item = this->itemForTouch(&touch)) {
@@ -63,7 +67,6 @@ struct $modify(CCMenu) {
             }
             return ListenerResult::Propagate;
         }, true);
-        this->setAttribute("hjfod.mouse-api/listener", listener);
         Mouse::updateListeners();
         
         return true;

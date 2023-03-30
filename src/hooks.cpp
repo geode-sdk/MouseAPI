@@ -26,24 +26,7 @@ struct $modify(CCTouchDispatcher) {
 
     void addTargetedDelegate(CCTouchDelegate* delegate, int prio, bool swallows) {
         CCTouchDispatcher::addTargetedDelegate(delegate, prio, swallows);
-        // handle CCScrollLayerExt specially since it's quite wacky
-        if (auto scroll = typeinfo_cast<CCScrollLayerExt*>(delegate)) {
-            scroll->template addEventListener<MouseEventFilter>(
-                "mouse"_spr,
-                [=](MouseEvent* event) {
-                    if (!scroll->m_disableMovement) {
-                        if (scroll->boundingBox().containsPoint(
-                            scroll->convertToNodeSpace(event->getPosition())
-                        )) {
-                            return MouseResult::Eat;
-                        }
-                    }
-                    return MouseResult::Leave;
-                },
-                true
-            );
-        }
-        else if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+        if (auto node = typeinfo_cast<CCNode*>(delegate)) {
             if (node->getEventListener("mouse"_spr)) return;
             if (swallows) {
                 node->template addEventListener<MouseEventFilter>(

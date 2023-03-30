@@ -36,19 +36,20 @@ namespace mouse {
     class Mouse;
     class MouseEventFilter;
 
-    class MouseAttributes {
+    class MOUSEAPI_DLL MouseAttributes : public cocos2d::CCObject {
     protected:
-        std::unordered_set<MouseButton> m_heldButtons;
-        bool m_hovered = false;
-
-        friend class Mouse;
-        friend class MouseEventFilter;
+        cocos2d::CCNode* m_node;
     
     public:
         static MouseAttributes* from(cocos2d::CCNode* node);
 
         bool isHeld(MouseButton button) const;
         bool isHovered() const;
+
+        void addHeld(MouseButton button);
+        void removeHeld(MouseButton button);
+        void clearHeld();
+        void setHovered(bool hovered);
     };
 
     class MOUSEAPI_DLL MouseEvent : public geode::Event {
@@ -193,3 +194,9 @@ namespace mouse {
         static void updateListeners();
     };
 }
+
+template <>
+struct json::Serialize<mouse::MouseButton> {
+    static json::Value MOUSEAPI_DLL to_json(mouse::MouseButton const& button);
+    static mouse::MouseButton MOUSEAPI_DLL from_json(json::Value const& button);
+};

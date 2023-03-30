@@ -4,6 +4,7 @@
 #include <Geode/modify/CCNode.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/cocos/robtop/glfw/glfw3.h>
+#include <json/stl_serialize.hpp>
 
 using namespace geode::prelude;
 using namespace mouse;
@@ -68,20 +69,52 @@ CCPoint convertMouseCoords(double x, double y) {
     return ccp(mouse.x, 1.f - mouse.y) * winSize;
 }
 
-struct $modify(MouseNode, CCNode) {
-	MouseAttributes attributes;
-};
+json::Value json::Serialize<MouseButton>::to_json(MouseButton const& button) {
+	return static_cast<int>(button);
+}
+
+MouseButton json::Serialize<MouseButton>::from_json(json::Value const& json) {
+	return static_cast<MouseButton>(json.as_int());
+}
+
+using List = std::unordered_set<MouseButton>;
 
 MouseAttributes* MouseAttributes::from(CCNode* node) {
-	return &static_cast<MouseNode*>(node)->m_fields->attributes;
+	auto attrs = new MouseAttributes();
+	attrs->m_node = node;
+	attrs->autorelease();
+	return attrs;
 }
 
 bool MouseAttributes::isHeld(MouseButton button) const {
-	return m_heldButtons.contains(button);
+	if (auto list = m_node->template getAttribute<List>("held"_spr)) {
+		return list.value().contains(button);
+	}
+	return false;
 }
 
 bool MouseAttributes::isHovered() const {
-	return m_hovered;
+	return m_node->template getAttribute<bool>("hovered"_spr).value_or(false);
+}
+
+void MouseAttributes::addHeld(MouseButton button) {
+	auto list = m_node->template getAttribute<List>("held"_spr).value_or(List {});
+	list.insert(button);
+	m_node->setAttribute("held"_spr, list);
+}
+
+void MouseAttributes::removeHeld(MouseButton button) {
+	auto list = m_node->template getAttribute<List>("held"_spr).value_or(List {});
+	list.erase(button);
+	m_node->setAttribute("held"_spr, list);
+}
+
+void MouseAttributes::clearHeld() {
+	m_node->setAttribute("held"_spr, List {});
+}
+
+void MouseAttributes::setHovered(bool hovered) {
+	m_node->setAttribute("hovered"_spr, hovered);
 }
 
 MouseEvent::MouseEvent(CCNode* target, CCPoint const& position)
@@ -207,7 +240,9 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 		if (nodeIsVisible(m_target) && m_target->hasAncestor(nullptr)) {
 			auto inside =
 				m_ignorePosition ||
-				m_target->boundingBox().containsPoint(event->getPosition());
+				m_target->boundingBox().containsPoint(
+					m_target->getParent()->convertToNodeSpace(event->getPosition())
+				);
 
 			// Events will only be dispatched to the target under the 
 			// following conditions: 
@@ -227,15 +262,15 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			) {
 				auto attrs = MouseAttributes::from(m_target);
 				// Post hover event
-				if (!attrs->m_hovered && inside) {
-					attrs->m_hovered = true;
+				if (!attrs->isHovered() && inside) {
+					attrs->setHovered(true);
 					MouseHoverEvent(
 						m_target, true,
 						event->getPosition()
 					).post();
 				}
-				else if (attrs->m_hovered && !inside) {
-					attrs->m_hovered = false;
+				else if (attrs->isHovered() && !inside) {
+					attrs->setHovered(false);
 					MouseHoverEvent(
 						m_target, false,
 						event->getPosition()
@@ -246,10 +281,10 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 				auto click = typeinfo_cast<MouseClickEvent*>(event);
 				if (click) {
 					if (click->isDown()) {
-						attrs->m_heldButtons.insert(click->getButton());
+						attrs->addHeld(click->getButton());
 					}
 					else {
-						attrs->m_heldButtons.erase(click->getButton());
+						attrs->removeHeld(click->getButton());
 					}
 				}
 				auto s = fn(event);
@@ -257,7 +292,7 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 					// If the callback didn't want to capture the mouse, release 
 					// the hold attribute immediately
 					if (click) {
-						attrs->m_heldButtons.erase(click->getButton());
+						attrs->removeHeld(click->getButton());
 					}
 				}
 				else {
@@ -295,9 +330,9 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			else {
 				auto attrs = MouseAttributes::from(m_target);
 				// Post hover leave event if necessary
-				if (attrs->m_hovered && !inside) {
-					attrs->m_hovered = false;
-					attrs->m_heldButtons.clear();
+				if (attrs->isHovered() && !inside) {
+					attrs->setHovered(false);
+					attrs->clearHeld();
 					m_eaten = nullptr;
 					MouseHoverEvent(
 						m_target, false,

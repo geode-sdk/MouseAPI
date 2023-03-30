@@ -351,7 +351,7 @@ void Mouse::updateListeners() {
 	s_updating = true;
 	// update only once per frame at most
 	Loader::get()->queueInGDThread([]() {
-		log::info("sorting");
+		// log::info("sorting");
 		std::sort(
 			Event::listeners().begin(),
 			Event::listeners().end(),
@@ -377,11 +377,11 @@ void Mouse::updateListeners() {
 				return true;
 			}
 		);
-		for (auto& a : Event::listeners()) {
-			if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
-				log::info("{}: {}", af->getFilter().getTargetPriority(), af->getFilter().getTarget());
-			}
-		}
+		// for (auto& a : Event::listeners()) {
+		// 	if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
+		// 		log::info("{}: {}", af->getFilter().getTargetPriority(), af->getFilter().getTarget());
+		// 	}
+		// }
 		s_updating = false;
 	});
 }
@@ -486,7 +486,6 @@ struct $modify(CCEGLViewModify, CCEGLView) {
 		else {
 			Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
 		}
-		// log::info("clicked {}", button);
 		auto event = MouseClickEvent(
 			Mouse::get()->getCapturing(),
 			static_cast<MouseButton>(button), action,
@@ -513,7 +512,6 @@ struct $modify(CCTouchDispatcherModify, CCTouchDispatcher) {
 	void touches(CCSet* set, CCEvent* event, unsigned int type) {
 		if (auto me = typeinfo_cast<MouseEventContainer*>(event)) {
 			// Update event position in case some touches hook changed it
-			auto old = me->event.m_position;
 			me->event.m_position = static_cast<CCTouch*>(set->anyObject())->getLocation();
 			me->event.post();
 		}

@@ -2,6 +2,7 @@
 #include <Geode/modify/CCMenu.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/AchievementNotifier.hpp>
+#include <Geode/modify/CCScrollLayerExt.hpp>
 #include <Geode/utils/cocos.hpp>
 #include "../include/API.hpp"
 
@@ -11,25 +12,39 @@ using namespace mouse;
 struct $modify(CCTouchDispatcher) {
     void addStandardDelegate(CCTouchDelegate* delegate, int prio) {
         CCTouchDispatcher::addStandardDelegate(delegate, prio);
-        // CCMenu is handled specially
-        if (!typeinfo_cast<CCMenu*>(delegate)) {
-            if (auto node = typeinfo_cast<CCNode*>(delegate)) {
-                node->template addEventListener<MouseEventFilter>(
-                    "mouse"_spr,
-                    [=](MouseEvent*) {
-                        return MouseResult::Eat;
-                    }
-                );
-                Mouse::updateListeners();
-            }
+        if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+            if (node->getEventListener("mouse"_spr)) return;
+            node->template addEventListener<MouseEventFilter>(
+                "mouse"_spr,
+                [=](MouseEvent*) {
+                    return MouseResult::Eat;
+                }
+            );
+            Mouse::updateListeners();
         }
     }
 
     void addTargetedDelegate(CCTouchDelegate* delegate, int prio, bool swallows) {
         CCTouchDispatcher::addTargetedDelegate(delegate, prio, swallows);
-        // CCMenu is handled specially
-        if (typeinfo_cast<CCMenu*>(delegate)) return;
-        if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+        // handle CCScrollLayerExt specially since it's quite wacky
+        if (auto scroll = typeinfo_cast<CCScrollLayerExt*>(delegate)) {
+            scroll->template addEventListener<MouseEventFilter>(
+                "mouse"_spr,
+                [=](MouseEvent* event) {
+                    if (!scroll->m_disableMovement) {
+                        if (scroll->boundingBox().containsPoint(
+                            scroll->convertToNodeSpace(event->getPosition())
+                        )) {
+                            return MouseResult::Eat;
+                        }
+                    }
+                    return MouseResult::Leave;
+                },
+                true
+            );
+        }
+        else if (auto node = typeinfo_cast<CCNode*>(delegate)) {
+            if (node->getEventListener("mouse"_spr)) return;
             if (swallows) {
                 node->template addEventListener<MouseEventFilter>(
                     "mouse"_spr,
@@ -63,6 +78,8 @@ struct $modify(CCTouchDispatcher) {
     // }
 };
 
+struct $modify(CCScrollLayerExt) {};
+
 struct $modify(CCMenu) {
     bool initWithArray(CCArray* items) {
         if (!CCMenu::initWithArray(items))
@@ -77,7 +94,8 @@ struct $modify(CCMenu) {
                     return MouseResult::Swallow;
                 }
                 return MouseResult::Leave;
-            }, true
+            },
+            true
         );
         Mouse::updateListeners();
         

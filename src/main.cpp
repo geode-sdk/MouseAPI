@@ -235,13 +235,13 @@ bool MouseHoverEvent::isLeave() const {
 }
 
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
-	if (m_target) {
+	if (auto target = m_target.lock()) {
 		// Events will only be dispatched to nodes in the scene that are visible
-		if (nodeIsVisible(m_target) && m_target->hasAncestor(nullptr)) {
+		if (nodeIsVisible(target) && target->hasAncestor(nullptr)) {
 			auto inside =
 				m_ignorePosition ||
-				m_target->boundingBox().containsPoint(
-					m_target->getParent()->convertToNodeSpace(event->getPosition())
+				target->boundingBox().containsPoint(
+					target->getParent()->convertToNodeSpace(event->getPosition())
 				);
 
 			// Events will only be dispatched to the target under the 
@@ -254,25 +254,25 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			// 3. Nothing is capturing the mouse (event is "edible")
 			if (
 				// Is this the node the event was meant for?
-				event->getTarget() == m_target ||
+				event->getTarget() == target ||
 				// Is this node eating events?
 				m_eaten.data() ||
 				// Is this event inside the node and edible?
 				(!event->getTarget() && inside)
 			) {
-				auto attrs = MouseAttributes::from(m_target);
+				auto attrs = MouseAttributes::from(target);
 				// Post hover event
 				if (!attrs->isHovered() && inside) {
 					attrs->setHovered(true);
 					MouseHoverEvent(
-						m_target, true,
+						target, true,
 						event->getPosition()
 					).post();
 				}
 				else if (attrs->isHovered() && !inside) {
 					attrs->setHovered(false);
 					MouseHoverEvent(
-						m_target, false,
+						target, false,
 						event->getPosition()
 					).post();
 				}
@@ -303,7 +303,7 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 				}
 				if (m_eaten) {
 					event->updateTouch(m_eaten);
-					event->dispatchTouch(m_target, m_eaten);
+					event->dispatchTouch(target, m_eaten);
 				}
 				// Release eaten only after dispatching the touch event so the 
 				// touch event can still access the touch
@@ -312,14 +312,14 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 				}
 				// If the callback wants to swallow, or has captured the mouse, 
 				// capture the mouse and stop propagation here
-				if (s == MouseResult::Swallow || event->getTarget() == m_target) {
+				if (s == MouseResult::Swallow || event->getTarget() == target) {
 					event->swallow();
 					if (click) {
 						if (click->isDown()) {
-							Mouse::capture(m_target);
+							Mouse::capture(target);
 						}
 						else {
-							Mouse::release(m_target);
+							Mouse::release(target);
 						}
 					}
 					return ListenerResult::Stop;
@@ -328,14 +328,14 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			}
 			// If this target doesn't get the event, propagate onwards
 			else {
-				auto attrs = MouseAttributes::from(m_target);
+				auto attrs = MouseAttributes::from(target);
 				// Post hover leave event if necessary
 				if (attrs->isHovered() && !inside) {
 					attrs->setHovered(false);
 					attrs->clearHeld();
 					m_eaten = nullptr;
 					MouseHoverEvent(
-						m_target, false,
+						target, false,
 						event->getPosition()
 					).post();
 				}
@@ -362,12 +362,13 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 	}
 }
 
-CCNode* MouseEventFilter::getTarget() const {
+WeakRef<CCNode> MouseEventFilter::getTarget() const {
 	return m_target;
 }
 
 std::vector<int> MouseEventFilter::getTargetPriority() const {
-	auto node = m_target;
+	auto node = m_target.lock();
+	if (!node) return {};
 	std::vector<int> tree {};
 	while (auto parent = node->getParent()) {
 		tree.insert(tree.begin(), parent->getChildren()->indexOfObject(node));

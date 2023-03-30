@@ -158,7 +158,7 @@ namespace mouse {
 
     class MOUSEAPI_DLL MouseEventFilter : public geode::EventFilter<MouseEvent> {
     protected:
-        cocos2d::CCNode* m_target;
+        geode::WeakRef<cocos2d::CCNode> m_target;
         geode::Ref<cocos2d::CCTouch> m_eaten = nullptr;
         bool m_ignorePosition = false;
         int m_priority;
@@ -170,7 +170,7 @@ namespace mouse {
         MouseEventFilter(cocos2d::CCNode* target, bool ignorePosition = false);
         ~MouseEventFilter();
 
-        cocos2d::CCNode* getTarget() const;
+        geode::WeakRef<cocos2d::CCNode> getTarget() const;
         std::vector<int> getTargetPriority() const;
     };
 

@@ -2,6 +2,7 @@
 #include <Geode/utils/cocos.hpp>
 #include <Geode/utils/ranges.hpp>
 #include <Geode/modify/CCNode.hpp>
+#include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/cocos/robtop/glfw/glfw3.h>
 
 using namespace geode::prelude;
@@ -390,6 +391,10 @@ Mouse* Mouse::get() {
 	return inst;
 }
 
+bool Mouse::isHeld(MouseButton button) const {
+	return m_heldButtons.contains(button);
+}
+
 CCNode* Mouse::getCapturing() const {
 	return m_swallowing;
 }
@@ -406,6 +411,19 @@ void Mouse::release(CCNode* target) {
 	}
 }
 
+struct MouseEventContainer : public CCEvent {
+	MouseEvent& event;
+	MouseEventContainer(MouseEvent& event) : event(event) {
+		this->autorelease();
+	}
+};
+
+static void postMouseEventThroughTouches(MouseEvent& event, ccTouchType action) {
+	auto set = CCSet::create();
+	set->addObject(event.createTouch());
+	CCTouchDispatcher::get()->touches(set, new MouseEventContainer(event), action);
+}
+
 #ifdef GEODE_IS_DESKTOP
 #include <Geode/modify/CCMouseDispatcher.hpp>
 
@@ -415,7 +433,7 @@ struct $modify(CCMouseDispatcher) {
 			Mouse::get()->getCapturing(), y, x,
 			getMousePos()
 		);
-		ev.post();
+		postMouseEventThroughTouches(ev, CCTOUCHOTHER);
 		if (ev.isSwallowed()) {
 			return true;
 		}
@@ -432,7 +450,13 @@ static GLFWcursorposfun originalCursorPosFun = nullptr;
 
 void __cdecl glfwPosCallback(GLFWwindow* window, double x, double y) {
 	originalCursorPosFun(window, x, y);
-	MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y)).post();
+	auto event = MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y));
+	postMouseEventThroughTouches(
+		event,
+		(Mouse::get()->isHeld(MouseButton::Left) ?
+			CCTOUCHMOVED :
+			CCTOUCHOTHER)
+	);
 }
 
 void setCursorPosCallback(GLFWwindow* window) {
@@ -449,27 +473,52 @@ $on_mod(Loaded) {
 	}
 };
 
-struct $modify(CCEGLView) {
+struct $modify(CCEGLViewModify, CCEGLView) {
 	void setupWindow(CCRect size) {
 		CCEGLView::setupWindow(size);
 		setCursorPosCallback(m_pMainWindow);
 	}
 
 	void onGLFWMouseCallBack(GLFWwindow* window, int button, int action, int mods) {
+		if (action) {
+			Mouse::get()->m_heldButtons.insert(static_cast<MouseButton>(button));
+		}
+		else {
+			Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
+		}
 		// log::info("clicked {}", button);
-		auto ev = MouseClickEvent(
+		auto event = MouseClickEvent(
 			Mouse::get()->getCapturing(),
 			static_cast<MouseButton>(button), action,
 			getMousePos()
 		);
-		ev.post();
-		if (ev.isSwallowed()) {
-			return;
-		}
-		CCEGLView::onGLFWMouseCallBack(window, button, action, mods);
+		postMouseEventThroughTouches(
+			event,
+			(static_cast<MouseButton>(button) == MouseButton::Left ?
+				(action ? CCTOUCHBEGAN : CCTOUCHENDED) :
+				CCTOUCHOTHER)
+		);
 	}
 };
 
 #else
 #error "Not implemented on this platform"
 #endif
+
+struct $modify(CCTouchDispatcherModify, CCTouchDispatcher) {
+	static void onModify(auto& self) {
+		(void)self.setHookPriority("CCTouchDispatcher::touches", 1000);
+	}
+
+	void touches(CCSet* set, CCEvent* event, unsigned int type) {
+		if (auto me = typeinfo_cast<MouseEventContainer*>(event)) {
+			// Update event position in case some touches hook changed it
+			auto old = me->event.m_position;
+			me->event.m_position = static_cast<CCTouch*>(set->anyObject())->getLocation();
+			me->event.post();
+		}
+		else {
+			CCTouchDispatcher::touches(set, event, type);
+		}
+	}
+};

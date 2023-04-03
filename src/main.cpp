@@ -395,6 +395,16 @@ void Mouse::updateListeners() {
 	// update only once per frame at most
 	Loader::get()->queueInGDThread([]() {
 		// log::info("sorting");
+		auto copy = Event::listeners();
+		for (auto& listener : copy) {
+			auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(listener);
+			if (af) {
+				auto target = af->getFilter().getTarget();
+				if (target.has_value() && !target.value().lock()) {
+					listener->disable();
+				}
+			}
+		}
 		std::sort(
 			Event::listeners().begin(),
 			Event::listeners().end(),
@@ -422,7 +432,10 @@ void Mouse::updateListeners() {
 		);
 		// for (auto& a : Event::listeners()) {
 		// 	if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
-		// 		log::info("{}: {}", af->getFilter().getTargetPriority(), af->getFilter().getTarget());
+		// 		log::info("{}: {}",
+		// 			af->getFilter().getTargetPriority(),
+		// 			af->getFilter().getTarget().value_or(nullptr).lock().data()
+		// 		);
 		// 	}
 		// }
 		s_updating = false;
@@ -439,7 +452,7 @@ bool Mouse::isHeld(MouseButton button) const {
 }
 
 CCNode* Mouse::getCapturing() const {
-	return m_swallowing;
+	return m_swallowing.lock();
 }
 
 void Mouse::capture(CCNode* target) {

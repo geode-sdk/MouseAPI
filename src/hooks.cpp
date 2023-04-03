@@ -2,7 +2,7 @@
 #include <Geode/modify/CCMenu.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/AchievementNotifier.hpp>
-#include <Geode/modify/CCScrollLayerExt.hpp>
+#include <Geode/modify/CCTextInputNode.hpp>
 #include <Geode/utils/cocos.hpp>
 #include "../include/API.hpp"
 
@@ -61,8 +61,6 @@ struct $modify(CCTouchDispatcher) {
     // }
 };
 
-struct $modify(CCScrollLayerExt) {};
-
 struct $modify(CCMenu) {
     bool initWithArray(CCArray* items) {
         if (!CCMenu::initWithArray(items))
@@ -82,6 +80,17 @@ struct $modify(CCMenu) {
         );
         Mouse::updateListeners();
         
+        return true;
+    }
+};
+
+struct $modify(CCTextInputNode) {
+    bool init(float width, float height, const char* caption, const char* thonburi, int maxCharCount, const char* font) {
+        if (!CCTextInputNode::init(width, height, caption, thonburi, maxCharCount, font))
+            return false;
+        
+        this->ignoreAnchorPointForPosition(false);
+
         return true;
     }
 };

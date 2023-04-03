@@ -176,7 +176,7 @@ namespace mouse {
 
     class MOUSEAPI_DLL Mouse {
     protected:
-        geode::Ref<cocos2d::CCNode> m_swallowing;
+        geode::WeakRef<cocos2d::CCNode> m_swallowing;
         std::unordered_set<MouseButton> m_heldButtons;
         static inline std::atomic_bool s_updating = false;
 

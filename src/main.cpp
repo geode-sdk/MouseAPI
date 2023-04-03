@@ -235,110 +235,115 @@ bool MouseHoverEvent::isLeave() const {
 }
 
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
-	if (auto target = m_target.lock()) {
-		// Events will only be dispatched to nodes in the scene that are visible
-		if (nodeIsVisible(target) && target->hasAncestor(nullptr)) {
-			auto inside =
-				m_ignorePosition ||
-				target->boundingBox().containsPoint(
-					target->getParent()->convertToNodeSpace(event->getPosition())
-				);
+	if (m_target.has_value()) {
+		if (auto target = m_target.value().lock()) {
+			// Events will only be dispatched to nodes in the scene that are visible
+			if (nodeIsVisible(target) && target->hasAncestor(nullptr)) {
+				auto inside =
+					m_ignorePosition ||
+					target->boundingBox().containsPoint(
+						target->getParent()->convertToNodeSpace(event->getPosition())
+					);
 
-			// Events will only be dispatched to the target under the 
-			// following conditions: 
-			// 1. The target is capturing the mouse
-			// 2. When the event is dispatched, if no other target has yet 
-			// captured the mouse, another target can "eat" it, in other words 
-			// registering themselves as a "weak" target that will still 
-			// receive events
-			// 3. Nothing is capturing the mouse (event is "edible")
-			if (
-				// Is this the node the event was meant for?
-				event->getTarget() == target ||
-				// Is this node eating events?
-				m_eaten.data() ||
-				// Is this event inside the node and edible?
-				(!event->getTarget() && inside)
-			) {
-				auto attrs = MouseAttributes::from(target);
-				// Post hover event
-				if (!attrs->isHovered() && inside) {
-					attrs->setHovered(true);
-					MouseHoverEvent(
-						target, true,
-						event->getPosition()
-					).post();
-				}
-				else if (attrs->isHovered() && !inside) {
-					attrs->setHovered(false);
-					MouseHoverEvent(
-						target, false,
-						event->getPosition()
-					).post();
-				}
-				// Add click to held list (may be something the callback needs 
-				// to know, so needs to be set before it's called)
-				auto click = typeinfo_cast<MouseClickEvent*>(event);
-				if (click) {
-					if (click->isDown()) {
-						attrs->addHeld(click->getButton());
+				// Events will only be dispatched to the target under the 
+				// following conditions: 
+				// 1. The target is capturing the mouse
+				// 2. When the event is dispatched, if no other target has yet 
+				// captured the mouse, another target can "eat" it, in other words 
+				// registering themselves as a "weak" target that will still 
+				// receive events
+				// 3. Nothing is capturing the mouse (event is "edible")
+				if (
+					// Is this the node the event was meant for?
+					event->getTarget() == target ||
+					// Is this node eating events?
+					m_eaten.data() ||
+					// Is this event inside the node and edible?
+					(!event->getTarget() && inside)
+				) {
+					auto attrs = MouseAttributes::from(target);
+					// Post hover event
+					if (!attrs->isHovered() && inside) {
+						attrs->setHovered(true);
+						MouseHoverEvent(
+							target, true,
+							event->getPosition()
+						).post();
 					}
-					else {
-						attrs->removeHeld(click->getButton());
+					else if (attrs->isHovered() && !inside) {
+						attrs->setHovered(false);
+						MouseHoverEvent(
+							target, false,
+							event->getPosition()
+						).post();
 					}
-				}
-				auto s = fn(event);
-				if (s == MouseResult::Leave) {
-					// If the callback didn't want to capture the mouse, release 
-					// the hold attribute immediately
-					if (click) {
-						attrs->removeHeld(click->getButton());
-					}
-				}
-				else {
-					// Eat if clicked
-					if (click && click->isDown()) {
-						m_eaten = event->createTouch();
-					}
-				}
-				if (m_eaten) {
-					event->updateTouch(m_eaten);
-					event->dispatchTouch(target, m_eaten);
-				}
-				// Release eaten only after dispatching the touch event so the 
-				// touch event can still access the touch
-				if (s != MouseResult::Leave && click && !click->isDown()) {
-					m_eaten = nullptr;	
-				}
-				// If the callback wants to swallow, or has captured the mouse, 
-				// capture the mouse and stop propagation here
-				if (s == MouseResult::Swallow || event->getTarget() == target) {
-					event->swallow();
+					// Add click to held list (may be something the callback needs 
+					// to know, so needs to be set before it's called)
+					auto click = typeinfo_cast<MouseClickEvent*>(event);
 					if (click) {
 						if (click->isDown()) {
-							Mouse::capture(target);
+							attrs->addHeld(click->getButton());
 						}
 						else {
-							Mouse::release(target);
+							attrs->removeHeld(click->getButton());
 						}
 					}
-					return ListenerResult::Stop;
+					auto s = fn(event);
+					if (s == MouseResult::Leave) {
+						// If the callback didn't want to capture the mouse, release 
+						// the hold attribute immediately
+						if (click) {
+							attrs->removeHeld(click->getButton());
+						}
+					}
+					else {
+						// Eat if clicked
+						if (click && click->isDown()) {
+							m_eaten = event->createTouch();
+						}
+					}
+					if (m_eaten) {
+						event->updateTouch(m_eaten);
+						event->dispatchTouch(target, m_eaten);
+					}
+					// Release eaten only after dispatching the touch event so the 
+					// touch event can still access the touch
+					if (s != MouseResult::Leave && click && !click->isDown()) {
+						m_eaten = nullptr;	
+					}
+					// If the callback wants to swallow, or has captured the mouse, 
+					// capture the mouse and stop propagation here
+					if (s == MouseResult::Swallow || event->getTarget() == target) {
+						event->swallow();
+						if (click) {
+							if (click->isDown()) {
+								Mouse::capture(target);
+							}
+							else {
+								Mouse::release(target);
+							}
+						}
+						return ListenerResult::Stop;
+					}
+					return ListenerResult::Propagate;
 				}
-				return ListenerResult::Propagate;
+				// If this target doesn't get the event, propagate onwards
+				else {
+					auto attrs = MouseAttributes::from(target);
+					// Post hover leave event if necessary
+					if (attrs->isHovered() && !inside) {
+						attrs->setHovered(false);
+						attrs->clearHeld();
+						m_eaten = nullptr;
+						MouseHoverEvent(
+							target, false,
+							event->getPosition()
+						).post();
+					}
+					return ListenerResult::Propagate;
+				}
 			}
-			// If this target doesn't get the event, propagate onwards
 			else {
-				auto attrs = MouseAttributes::from(target);
-				// Post hover leave event if necessary
-				if (attrs->isHovered() && !inside) {
-					attrs->setHovered(false);
-					attrs->clearHeld();
-					m_eaten = nullptr;
-					MouseHoverEvent(
-						target, false,
-						event->getPosition()
-					).post();
-				}
 				return ListenerResult::Propagate;
 			}
 		}
@@ -362,12 +367,13 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 	}
 }
 
-WeakRef<CCNode> MouseEventFilter::getTarget() const {
+std::optional<geode::WeakRef<cocos2d::CCNode>> MouseEventFilter::getTarget() const {
 	return m_target;
 }
 
 std::vector<int> MouseEventFilter::getTargetPriority() const {
-	auto node = m_target.lock();
+	if (!m_target.has_value()) return {};
+	auto node = m_target.value().lock();
 	if (!node) return {};
 	std::vector<int> tree {};
 	while (auto parent = node->getParent()) {
@@ -378,7 +384,8 @@ std::vector<int> MouseEventFilter::getTargetPriority() const {
 }
 
 MouseEventFilter::MouseEventFilter(CCNode* target, bool ignorePosition)
-  : m_target(target), m_ignorePosition(ignorePosition) {}
+  : m_target(target), m_ignorePosition(ignorePosition)
+{}
 
 MouseEventFilter::~MouseEventFilter() {}
 
@@ -486,13 +493,15 @@ static GLFWcursorposfun originalCursorPosFun = nullptr;
 
 void __cdecl glfwPosCallback(GLFWwindow* window, double x, double y) {
 	originalCursorPosFun(window, x, y);
-	auto event = MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y));
-	postMouseEventThroughTouches(
-		event,
-		(Mouse::get()->isHeld(MouseButton::Left) ?
-			CCTOUCHMOVED :
-			CCTOUCHOTHER)
-	);
+	Loader::get()->queueInGDThread([=]() {
+		auto event = MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y));
+		postMouseEventThroughTouches(
+			event,
+			(Mouse::get()->isHeld(MouseButton::Left) ?
+				CCTOUCHMOVED :
+				CCTOUCHOTHER)
+		);
+	});
 }
 
 void setCursorPosCallback(GLFWwindow* window) {
@@ -516,23 +525,25 @@ struct $modify(CCEGLViewModify, CCEGLView) {
 	}
 
 	void onGLFWMouseCallBack(GLFWwindow* window, int button, int action, int mods) {
-		if (action) {
-			Mouse::get()->m_heldButtons.insert(static_cast<MouseButton>(button));
-		}
-		else {
-			Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
-		}
-		auto event = MouseClickEvent(
-			Mouse::get()->getCapturing(),
-			static_cast<MouseButton>(button), action,
-			getMousePos()
-		);
-		postMouseEventThroughTouches(
-			event,
-			(static_cast<MouseButton>(button) == MouseButton::Left ?
-				(action ? CCTOUCHBEGAN : CCTOUCHENDED) :
-				CCTOUCHOTHER)
-		);
+		Loader::get()->queueInGDThread([=]() {
+			if (action) {
+				Mouse::get()->m_heldButtons.insert(static_cast<MouseButton>(button));
+			}
+			else {
+				Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
+			}
+			auto event = MouseClickEvent(
+				Mouse::get()->getCapturing(),
+				static_cast<MouseButton>(button), action,
+				getMousePos()
+			);
+			postMouseEventThroughTouches(
+				event,
+				(static_cast<MouseButton>(button) == MouseButton::Left ?
+					(action ? CCTOUCHBEGAN : CCTOUCHENDED) :
+					CCTOUCHOTHER)
+			);
+		});
 	}
 };
 

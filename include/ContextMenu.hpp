@@ -13,11 +13,12 @@ namespace mouse {
 
     class MOUSEAPI_DLL ContextMenuItem : public cocos2d::CCNode {
     protected:
+        ContextMenu* m_parentMenu;
         bool m_hovered = false;
         cocos2d::CCNode* m_icon = nullptr;
         cocos2d::CCLabelBMFont* m_label = nullptr;
 
-        bool init();
+        bool init(ContextMenu* menu);
 
         void draw() override;
 
@@ -30,37 +31,59 @@ namespace mouse {
 
         virtual void hover();
         virtual void unhover();
+        virtual void hide();
         virtual void select() = 0;
     };
 
     using ItemRef = geode::Ref<ContextMenuItem>;
 
+    class MOUSEAPI_DLL ActionMenuItem : public ContextMenuItem {
+    protected:
+        std::string m_eventID;
+
+        bool init(ContextMenu* menu, std::string const& eventID);
+    
+    public:
+        static ActionMenuItem* create(ContextMenu* menu, std::string const& eventID);
+
+        void select() override;
+    };
+
     class MOUSEAPI_DLL SubMenuItem : public ContextMenuItem {
     protected:
         std::vector<ItemRef> m_items;
-        geode::Ref<ContextMenu> m_menu;
+        ContextMenu* m_menu;
 
-        bool init(std::vector<ItemRef> const& items);
+        bool init(ContextMenu* menu, std::vector<ItemRef> const& items);
     
     public:
-        static SubMenuItem* create(std::vector<ItemRef> const& items);
+        static SubMenuItem* create(ContextMenu* menu, std::vector<ItemRef> const& items);
 
         void select() override;
         void hover() override;
         void unhover() override;
+        void hide() override;
     };
 
     class MOUSEAPI_DLL ContextMenu : public cocos2d::CCNode {
     protected:
+        geode::Ref<cocos2d::CCNode> m_target;
         std::vector<ItemRef> m_items;
         cocos2d::CCNode* m_container;
-        static inline geode::Ref<ContextMenu> s_current = nullptr;
+        cocos2d::extension::CCScale9Sprite* m_bg;
 
-        bool init(std::vector<ItemRef> const& items);
+        bool init(cocos2d::CCNode* target);
+
+        ActionMenuItem* createError(std::string const& msg);
+        void loadItems(std::vector<ItemRef> const& items);
+        std::vector<ItemRef> parseItems(json::Value const& value);
 
     public:
-        static ContextMenu* create(std::vector<ItemRef> const& items);
-        static ContextMenu* get(bool create = true);
+        static ContextMenu* create(cocos2d::CCNode* target);
+        static ContextMenu* create(cocos2d::CCNode* target, std::vector<ItemRef> const& items);
+        static ContextMenu* create(cocos2d::CCNode* target, json::Value const& items);
+
+        cocos2d::CCNode* getTarget() const;
 
         void show(cocos2d::CCPoint const& pos);
         void hide();

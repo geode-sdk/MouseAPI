@@ -63,12 +63,12 @@ struct $modify(MenuLayer) {
                 json::Array {
                     json::Object {
                         { "text", "Click to Work?" },
-                        { "icon-frame", "GJ_infoIcon_001.png" },
+                        { "frame", "GJ_infoIcon_001.png" },
                         { "click", "my-event-id"_spr },
                     },
                     json::Object {
                         { "text", "Click to Work?" },
-                        { "icon-frame", "GJ_infoIcon_001.png" },
+                        { "frame", "GJ_infoIcon_001.png" },
                         { "sub-menu", json::Array {
                             json::Object {
                                 { "text", "Sub menu!!" },

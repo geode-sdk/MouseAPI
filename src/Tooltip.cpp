@@ -64,7 +64,7 @@ void Tooltip::show(CCNode* node) {
 }
 
 void Tooltip::hide() {
-    this->setVisible(false);
+    this->removeFromParent();
 }
 
 $execute {

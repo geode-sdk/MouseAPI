@@ -185,6 +185,8 @@ namespace mouse {
     public:
         static Mouse* get();
 
+        static std::vector<geode::EventListener<MouseEventFilter>*> getMouseListeners();
+
         bool isHeld(MouseButton button) const;
 
         cocos2d::CCNode* getCapturing() const;

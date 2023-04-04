@@ -57,6 +57,30 @@ struct $modify(MenuLayer) {
         
         this->getChildByID("main-title")
             ->setAttribute("hjfod.mouse-api/tooltip", "Omg tooltips");
+
+        this->getChildByID("main-menu")
+            ->setAttribute("hjfod.mouse-api/context-menu",
+                json::Array {
+                    json::Object {
+                        { "text", "Click to Work?" },
+                        { "icon-frame", "GJ_infoIcon_001.png" },
+                        { "click", "my-event-id"_spr },
+                    },
+                    json::Object {
+                        { "text", "Click to Work?" },
+                        { "icon-frame", "GJ_infoIcon_001.png" },
+                        { "sub-menu", json::Array {
+                            json::Object {
+                                { "text", "Sub menu!!" },
+                            }
+                        } },
+                    },
+                    json::Object {
+                        { "text", "Quit Game" },
+                        { "click", "quit-game"_spr },
+                    },
+                }
+            );
         
         auto node = HoveredNode::create();
         node->setPosition(60, 80);

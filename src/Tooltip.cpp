@@ -38,11 +38,19 @@ Tooltip* Tooltip::create(std::string const& text) {
 }
 
 void Tooltip::move(CCPoint const& pos) {
-    this->setPosition(pos);
+    if (m_pParent) {
+        this->setPosition(m_pParent->convertToNodeSpace(pos));
+    }
+    else {
+        this->setPosition(pos);
+    }
 }
 
 void Tooltip::show(CCPoint const& pos) {
-    CCScene::get()->addChild(this);
+    this->setVisible(true);
+    if (!m_pParent) {
+        CCScene::get()->addChild(this);
+    }
     this->move(pos);
 }
 
@@ -56,7 +64,7 @@ void Tooltip::show(CCNode* node) {
 }
 
 void Tooltip::hide() {
-    this->removeFromParent();
+    this->setVisible(false);
 }
 
 $execute {

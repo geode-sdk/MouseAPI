@@ -58,6 +58,39 @@ void MouseAttributes::setHovered(bool hovered) {
 	m_node->setAttribute("hovered"_spr, hovered);
 }
 
+bool MouseEventListenerPool::add(EventListenerProtocol* listener) {
+	if (typeinfo_cast<EventListener<MouseEventFilter>*>(listener)) {
+		return DefaultEventListenerPool::add(listener);
+	}
+	return false;
+}
+
+void MouseEventListenerPool::sortListeners() {
+	std::sort(
+		m_listeners.begin(),
+		m_listeners.end(),
+		[](EventListenerProtocol* a, EventListenerProtocol* b) {
+			auto af = static_cast<EventListener<MouseEventFilter>*>(a);
+			auto bf = static_cast<EventListener<MouseEventFilter>*>(b);
+			auto ap = af->getFilter().getTargetPriority(); 
+			auto bp = bf->getFilter().getTargetPriority();
+			for (size_t i = 0; i < ap.size(); i++) {
+				if (i < bp.size()) {
+					if (ap[i] != bp[i]) {
+						return ap[i] > bp[i];
+					}
+				}
+			}
+			return ap.size() > bp.size();
+		}
+	);
+}
+
+MouseEventListenerPool* MouseEventListenerPool::get() {
+	static auto inst = new MouseEventListenerPool;
+	return inst;
+}
+
 MouseEvent::MouseEvent(CCNode* target, CCPoint const& position)
   : m_target(target),
 	m_position(position) {}
@@ -95,6 +128,10 @@ CCEvent* MouseEvent::createEvent() const {
 void MouseEvent::updateTouch(CCTouch* touch) const {
 	touch->m_prevPoint = touch->m_point;
 	touch->m_point = CCDirector::get()->convertToUI(m_position);
+}
+
+EventListenerPool* MouseEvent::getPool() const {
+	return MouseEventListenerPool::get();
 }
 
 MouseClickEvent::MouseClickEvent(
@@ -211,17 +248,11 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			// Post hover event
 			if (!attrs->isHovered() && inside) {
 				attrs->setHovered(true);
-				MouseHoverEvent(
-					target, true,
-					event->getPosition()
-				).post();
+				MouseHoverEvent(target, true, event->getPosition()).post();
 			}
 			else if (attrs->isHovered() && !inside) {
 				attrs->setHovered(false);
-				MouseHoverEvent(
-					target, false,
-					event->getPosition()
-				).post();
+				MouseHoverEvent(target, false, event->getPosition()).post();
 			}
 			// Add click to held list (may be something the callback needs 
 			// to know, so needs to be set before it's called)
@@ -267,12 +298,6 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 					}
 					else {
 						Mouse::release(target);
-					}
-				}
-				// pass event to other listeners on this same node
-				for (auto& other : Mouse::getMouseListeners()) {
-					if (other->getFilter().getTarget() == target) {
-						other->getCallback()(event);
 					}
 				}
 				return ListenerResult::Stop;
@@ -327,6 +352,10 @@ std::vector<int> MouseEventFilter::getTargetPriority() const {
 	return tree;
 }
 
+EventListenerPool* MouseEventFilter::getPool() const {
+	return MouseEventListenerPool::get();
+}
+
 MouseEventFilter::MouseEventFilter(CCNode* target, bool ignorePosition)
   : m_target(target), m_ignorePosition(ignorePosition)
 {}
@@ -339,41 +368,7 @@ void Mouse::updateListeners() {
 	// update only once per frame at most
 	Loader::get()->queueInGDThread([]() {
 		// log::info("sorting");
-		auto copy = Event::listeners();
-		for (auto& listener : copy) {
-			auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(listener);
-			if (af) {
-				auto target = af->getFilter().getTarget();
-				if (target.has_value() && !target.value().lock()) {
-					listener->disable();
-				}
-			}
-		}
-		std::sort(
-			Event::listeners().begin(),
-			Event::listeners().end(),
-			[](EventListenerProtocol* a, EventListenerProtocol* b) {
-				auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a);
-				auto bf = typeinfo_cast<EventListener<MouseEventFilter>*>(b);
-				if (af && bf) {
-					auto ap = af->getFilter().getTargetPriority(); 
-					auto bp = bf->getFilter().getTargetPriority();
-					for (size_t i = 0; i < ap.size(); i++) {
-						if (i < bp.size()) {
-							if (ap[i] != bp[i]) {
-								return ap[i] > bp[i];
-							}
-						}
-					}
-					return ap.size() > bp.size();
-				}
-				// make sure mouse listeners are at the start of the list
-				if (af) return true;
-				if (bf) return false;
-				// keep everything else in the same order
-				return true;
-			}
-		);
+		MouseEventListenerPool::get()->sortListeners();
 		// for (auto& a : Event::listeners()) {
 		// 	if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
 		// 		log::info("{}: {}",
@@ -389,17 +384,6 @@ void Mouse::updateListeners() {
 Mouse* Mouse::get() {
 	static auto inst = new Mouse;
 	return inst;
-}
-
-std::vector<EventListener<MouseEventFilter>*> Mouse::getMouseListeners() {
-	std::vector<EventListener<MouseEventFilter>*> listeners {};
-	for (auto& listener : Event::listeners()) {
-		auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(listener);
-		if (af) {
-			listeners.push_back(af);
-		}
-	}
-	return listeners;
 }
 
 bool Mouse::isHeld(MouseButton button) const {

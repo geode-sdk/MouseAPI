@@ -52,6 +52,14 @@ namespace mouse {
         void setHovered(bool hovered);
     };
 
+    class MOUSEAPI_DLL MouseEventListenerPool : public geode::DefaultEventListenerPool {
+    public:
+        bool add(geode::EventListenerProtocol* listener) override;
+        void sortListeners();
+
+        static MouseEventListenerPool* get();
+    };
+
     class MOUSEAPI_DLL MouseEvent : public geode::Event {
     protected:
         bool m_swallow = false;
@@ -66,6 +74,8 @@ namespace mouse {
         void swallow();
         void updateTouch(cocos2d::CCTouch* touch) const;
         virtual void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const = 0;
+
+        geode::EventListenerPool* getPool() const override;
 
         friend class MouseEventFilter;
         friend struct CCTouchDispatcherModify;
@@ -167,6 +177,7 @@ namespace mouse {
         using Callback = MouseResult(MouseEvent*);
 
         geode::ListenerResult handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event);
+        geode::EventListenerPool* getPool() const;
         MouseEventFilter(cocos2d::CCNode* target, bool ignorePosition = false);
         ~MouseEventFilter();
 
@@ -184,8 +195,6 @@ namespace mouse {
 
     public:
         static Mouse* get();
-
-        static std::vector<geode::EventListener<MouseEventFilter>*> getMouseListeners();
 
         bool isHeld(MouseButton button) const;
 

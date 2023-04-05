@@ -128,6 +128,4 @@ struct $modify(CCEGLViewModify, CCEGLView) {
 	}
 };
 
-#else
-#error "Not implemented on this platform"
 #endif

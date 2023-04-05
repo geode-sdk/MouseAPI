@@ -28,7 +28,10 @@ void ContextMenuItem::setIcon(cocos2d::CCNode* icon) {
         m_icon->removeFromParent();
     }
     m_icon = icon;
-    this->insertBefore(icon, nullptr);
+    if (icon) {
+        this->insertBefore(icon, nullptr);
+        limitNodeSize(icon, { 17.5f, 17.5f }, 1.f, .1f);
+    }
     this->updateLayout();
 }
 
@@ -310,9 +313,6 @@ $execute {
                     ) {
                         return MouseResult::Leave;
                     }
-                    if (auto old = CCScene::get()->getChildByID("context-menu"_spr)) {
-                        old->removeFromParent();
-                    }
                     auto menu = ContextMenu::create(node, value);
                     menu->setID("context-menu"_spr);
                     menu->show(event->getPosition());
@@ -321,5 +321,19 @@ $execute {
             );
         },
         AttributeSetFilter("context-menu"_spr)
+    );
+    // close all context menus when clicked anywhere
+    new EventListener<MouseEventFilter>(
+        +[](MouseEvent* event) {
+            auto click = typeinfo_cast<MouseClickEvent*>(event);
+            if (!click || !click->isDown()) {
+                return MouseResult::Leave;
+            }
+            while (auto old = CCScene::get()->getChildByID("context-menu"_spr)) {
+                old->removeFromParent();
+            }
+            return MouseResult::Leave;
+        },
+        MouseEventFilter(nullptr)
     );
 }

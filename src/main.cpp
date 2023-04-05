@@ -66,23 +66,44 @@ bool MouseEventListenerPool::add(EventListenerProtocol* listener) {
 }
 
 void MouseEventListenerPool::sortListeners() {
-	// log::info("sorting");
+	log::info("sorting");
+	m_locked += 1;
+	// trigger all WeakRef locks (and frees) here because if they happen in 
+	// the middle of the sort that causes their event listeners to be freed 
+	// aswell which makes them try to mutate m_listeners which is totally UB 
+	// while it's being sorted
+	for (auto a : m_listeners) {
+		if (a) {
+			auto filter = static_cast<EventListener<MouseEventFilter>*>(a)->getFilter();
+			if (auto target = filter.getTarget()) {
+				target.value().lock();
+			}
+		}
+	}
+	// sort all mouse listeners to put the nodes closer on the screen at the front
 	std::sort(
 		m_listeners.begin(),
 		m_listeners.end(),
 		[](EventListenerProtocol* a, EventListenerProtocol* b) {
 			// listeners may be null if they are removed mid-handle iteration
 			if (!a || !b) return a > b;
-			auto af = static_cast<EventListener<MouseEventFilter>*>(a);
-			auto bf = static_cast<EventListener<MouseEventFilter>*>(b);
+			auto af = static_cast<EventListener<MouseEventFilter>*>(a)->getFilter();
+			auto bf = static_cast<EventListener<MouseEventFilter>*>(b)->getFilter();
 			// if these listeners point to the same target, compare by which 
 			// listener was added first
-			if (af->getFilter().getTarget() == bf->getFilter().getTarget()) {
-				return af->getFilter().getFilterIndex() > bf->getFilter().getFilterIndex();
+			if (af.getTarget() == bf.getTarget()) {
+				return af.getFilterIndex() > bf.getFilterIndex();
+			}
+			// if one of the listeners is global, that comes first
+			if (!af.getTarget().has_value()) {
+				return true;
+			}
+			if (!bf.getTarget().has_value()) {
+				return false;
 			}
 			// otherwise compare node tree indices, top nodes top bottom nodes
-			auto ap = af->getFilter().getTargetPriority(); 
-			auto bp = bf->getFilter().getTargetPriority();
+			auto ap = af.getTargetPriority(); 
+			auto bp = bf.getTargetPriority();
 			for (size_t i = 0; i < ap.size(); i++) {
 				if (i < bp.size()) {
 					if (ap[i] != bp[i]) {
@@ -93,14 +114,17 @@ void MouseEventListenerPool::sortListeners() {
 			return ap.size() > bp.size();
 		}
 	);
-	// for (auto& a : m_listeners) {
-	// 	if (auto af = static_cast<EventListener<MouseEventFilter>*>(a)) {
-	// 		log::info("{}: {}",
-	// 			af->getFilter().getTargetPriority(),
-	// 			af->getFilter().getTarget().value_or(nullptr).lock().data()
-	// 		);
-	// 	}
-	// }
+	for (auto a : m_listeners) {
+		if (!a) continue;
+		auto af = static_cast<EventListener<MouseEventFilter>*>(a);
+		log::info("{}: {}",
+			af->getFilter().getTargetPriority(),
+			af->getFilter().getTarget()
+				.value_or(WeakRef<CCNode>(nullptr))
+				.lock().data()
+		);
+	}
+	m_locked -= 1;
 }
 
 MouseEventListenerPool* MouseEventListenerPool::get() {
@@ -308,6 +332,7 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			// If the callback wants to swallow, or has captured the mouse, 
 			// capture the mouse and stop propagation here
 			if (s == MouseResult::Swallow || event->getTarget() == target) {
+				// todo: make the target the specific event listener that swallowed
 				event->swallow();
 				if (click) {
 					if (click->isDown()) {
@@ -378,8 +403,9 @@ size_t MouseEventFilter::getFilterIndex() const {
 }
 
 MouseEventFilter::MouseEventFilter(CCNode* target, bool ignorePosition)
-  : m_target(target), m_ignorePosition(ignorePosition),
-  	m_filterIndex(target->getEventListenerCount())
+  : m_target(target ? std::optional(WeakRef(target)) : std::nullopt),
+  	m_ignorePosition(ignorePosition),
+  	m_filterIndex(target ? target->getEventListenerCount() : 0)
 {}
 
 MouseEventFilter::~MouseEventFilter() {}

@@ -66,12 +66,21 @@ bool MouseEventListenerPool::add(EventListenerProtocol* listener) {
 }
 
 void MouseEventListenerPool::sortListeners() {
+	// log::info("sorting");
 	std::sort(
 		m_listeners.begin(),
 		m_listeners.end(),
 		[](EventListenerProtocol* a, EventListenerProtocol* b) {
+			// listeners may be null if they are removed mid-handle iteration
+			if (!a || !b) return a > b;
 			auto af = static_cast<EventListener<MouseEventFilter>*>(a);
 			auto bf = static_cast<EventListener<MouseEventFilter>*>(b);
+			// if these listeners point to the same target, compare by which 
+			// listener was added first
+			if (af->getFilter().getTarget() == bf->getFilter().getTarget()) {
+				return af->getFilter().getFilterIndex() > bf->getFilter().getFilterIndex();
+			}
+			// otherwise compare node tree indices, top nodes top bottom nodes
 			auto ap = af->getFilter().getTargetPriority(); 
 			auto bp = bf->getFilter().getTargetPriority();
 			for (size_t i = 0; i < ap.size(); i++) {
@@ -84,10 +93,18 @@ void MouseEventListenerPool::sortListeners() {
 			return ap.size() > bp.size();
 		}
 	);
+	// for (auto& a : m_listeners) {
+	// 	if (auto af = static_cast<EventListener<MouseEventFilter>*>(a)) {
+	// 		log::info("{}: {}",
+	// 			af->getFilter().getTargetPriority(),
+	// 			af->getFilter().getTarget().value_or(nullptr).lock().data()
+	// 		);
+	// 	}
+	// }
 }
 
 MouseEventListenerPool* MouseEventListenerPool::get() {
-	static auto inst = new MouseEventListenerPool;
+	static auto inst = new MouseEventListenerPool();
 	return inst;
 }
 
@@ -356,8 +373,13 @@ EventListenerPool* MouseEventFilter::getPool() const {
 	return MouseEventListenerPool::get();
 }
 
+size_t MouseEventFilter::getFilterIndex() const {
+	return m_filterIndex;
+}
+
 MouseEventFilter::MouseEventFilter(CCNode* target, bool ignorePosition)
-  : m_target(target), m_ignorePosition(ignorePosition)
+  : m_target(target), m_ignorePosition(ignorePosition),
+  	m_filterIndex(target->getEventListenerCount())
 {}
 
 MouseEventFilter::~MouseEventFilter() {}
@@ -367,16 +389,7 @@ void Mouse::updateListeners() {
 	s_updating = true;
 	// update only once per frame at most
 	Loader::get()->queueInGDThread([]() {
-		// log::info("sorting");
 		MouseEventListenerPool::get()->sortListeners();
-		// for (auto& a : Event::listeners()) {
-		// 	if (auto af = typeinfo_cast<EventListener<MouseEventFilter>*>(a)) {
-		// 		log::info("{}: {}",
-		// 			af->getFilter().getTargetPriority(),
-		// 			af->getFilter().getTarget().value_or(nullptr).lock().data()
-		// 		);
-		// 	}
-		// }
 		s_updating = false;
 	});
 }

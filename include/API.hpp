@@ -171,7 +171,7 @@ namespace mouse {
         std::optional<geode::WeakRef<cocos2d::CCNode>> m_target;
         geode::Ref<cocos2d::CCTouch> m_eaten = nullptr;
         bool m_ignorePosition = false;
-        int m_priority;
+        size_t m_filterIndex = 0;
 
     public:
         using Callback = MouseResult(MouseEvent*);
@@ -183,6 +183,7 @@ namespace mouse {
 
         std::optional<geode::WeakRef<cocos2d::CCNode>> getTarget() const;
         std::vector<int> getTargetPriority() const;
+        size_t getFilterIndex() const;
     };
 
     class MOUSEAPI_DLL Mouse {

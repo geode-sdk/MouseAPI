@@ -52,14 +52,6 @@ namespace mouse {
         void setHovered(bool hovered);
     };
 
-    class MOUSEAPI_DLL MouseEventListenerPool : public geode::DefaultEventListenerPool {
-    public:
-        bool add(geode::EventListenerProtocol* listener) override;
-        void sortListeners();
-
-        static MouseEventListenerPool* get();
-    };
-
     class MOUSEAPI_DLL MouseEvent : public geode::Event {
     protected:
         bool m_swallow = false;
@@ -188,7 +180,6 @@ namespace mouse {
 
     class MOUSEAPI_DLL Mouse {
     protected:
-        geode::WeakRef<cocos2d::CCNode> m_swallowing;
         std::unordered_set<MouseButton> m_heldButtons;
         static inline std::atomic_bool s_updating = false;
 
@@ -197,11 +188,12 @@ namespace mouse {
     public:
         static Mouse* get();
 
-        bool isHeld(MouseButton button) const;
+        geode::EventListener<MouseEventFilter>* getCapturing() const;
+        cocos2d::CCNode* getCapturingNode() const;
+        void capture(geode::EventListener<MouseEventFilter>* listener);
+        void release(geode::EventListener<MouseEventFilter>* listener);
 
-        cocos2d::CCNode* getCapturing() const;
-        static void capture(cocos2d::CCNode* target);
-        static void release(cocos2d::CCNode* target);
+        bool isHeld(MouseButton button) const;
 
         static void updateListeners();
     };

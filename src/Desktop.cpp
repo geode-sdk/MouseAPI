@@ -11,7 +11,7 @@ using namespace mouse;
 struct $modify(CCMouseDispatcher) {
 	bool dispatchScrollMSG(float y, float x) {
 		auto ev = MouseScrollEvent(
-			Mouse::get()->getCapturing(), y, x,
+			Mouse::get()->getCapturingNode(), y, x,
 			getMousePos()
 		);
 		postMouseEventThroughTouches(ev, CCTOUCHOTHER);

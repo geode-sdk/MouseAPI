@@ -75,7 +75,7 @@ static GLFWcursorposfun originalCursorPosFun = nullptr;
 void __cdecl glfwPosCallback(GLFWwindow* window, double x, double y) {
 	originalCursorPosFun(window, x, y);
 	Loader::get()->queueInGDThread([=]() {
-		auto event = MouseMoveEvent(Mouse::get()->getCapturing(), convertMouseCoords(x, y));
+		auto event = MouseMoveEvent(Mouse::get()->getCapturingNode(), convertMouseCoords(x, y));
 		postMouseEventThroughTouches(
 			event,
 			(Mouse::get()->isHeld(MouseButton::Left) ?
@@ -114,7 +114,7 @@ struct $modify(CCEGLViewModify, CCEGLView) {
 				Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
 			}
 			auto event = MouseClickEvent(
-				Mouse::get()->getCapturing(),
+				Mouse::get()->getCapturingNode(),
 				static_cast<MouseButton>(button), action,
 				getMousePos()
 			);

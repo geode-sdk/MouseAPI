@@ -10,20 +10,22 @@
 using namespace geode::prelude;
 using namespace mouse;
 
+using MouseListener = EventListener<MouseEventFilter>;
+
 class MouseEventListenerPool : public geode::DefaultEventListenerPool {
 protected:
-	EventListener<MouseEventFilter>* m_capturing = nullptr;
+	MouseListener* m_capturing = nullptr;
 
 public:
 	bool add(geode::EventListenerProtocol* listener) override {
-		if (typeinfo_cast<EventListener<MouseEventFilter>*>(listener)) {
+		if (typeinfo_cast<MouseListener*>(listener)) {
 			return DefaultEventListenerPool::add(listener);
 		}
 		return false;
 	}
 
 	void remove(geode::EventListenerProtocol* listener) override  {
-		this->release(static_cast<EventListener<MouseEventFilter>*>(listener));
+		this->release(static_cast<MouseListener*>(listener));
 		DefaultEventListenerPool::remove(listener);
 	}
 
@@ -45,7 +47,7 @@ public:
 		// while it's being sorted
 		for (auto a : m_listeners) {
 			if (a) {
-				auto filter = static_cast<EventListener<MouseEventFilter>*>(a)->getFilter();
+				auto filter = static_cast<MouseListener*>(a)->getFilter();
 				if (auto target = filter.getTarget()) {
 					target.value().lock();
 				}
@@ -58,8 +60,8 @@ public:
 			[](EventListenerProtocol* a, EventListenerProtocol* b) {
 				// listeners may be null if they are removed mid-handle iteration
 				if (!a || !b) return a > b;
-				auto af = static_cast<EventListener<MouseEventFilter>*>(a)->getFilter();
-				auto bf = static_cast<EventListener<MouseEventFilter>*>(b)->getFilter();
+				auto af = static_cast<MouseListener*>(a)->getFilter();
+				auto bf = static_cast<MouseListener*>(b)->getFilter();
 				// if these listeners point to the same target, compare by which 
 				// listener was added first
 				if (af.getTarget() == bf.getTarget()) {
@@ -87,7 +89,7 @@ public:
 		);
 		for (auto a : m_listeners) {
 			if (!a) continue;
-			auto af = static_cast<EventListener<MouseEventFilter>*>(a);
+			auto af = static_cast<MouseListener*>(a);
 			log::info("{}: {}",
 				af->getFilter().getTargetPriority(),
 				af->getFilter().getTarget()
@@ -98,7 +100,7 @@ public:
 		m_locked -= 1;
 	}
 
-	EventListener<MouseEventFilter>* getCapturing() const {
+	MouseListener* getCapturing() const {
 		return m_capturing;
 	}
 
@@ -111,13 +113,13 @@ public:
 		return nullptr;
 	}
 
-	void capture(EventListener<MouseEventFilter>* listener) {
+	void capture(MouseListener* listener) {
 		if (!m_capturing) {
 			m_capturing = listener;
 		}
 	}
 
-	void release(EventListener<MouseEventFilter>* listener) {
+	void release(MouseListener* listener) {
 		if (m_capturing == listener) {
 			m_capturing = nullptr;
 		}
@@ -286,7 +288,8 @@ float MouseScrollEvent::getDeltaX() const {
 }
 
 MouseHoverEvent::MouseHoverEvent(CCNode* target, bool enter, CCPoint const& pos)
-  : MouseEvent(target, pos), m_enter(enter) {}
+  : MouseEvent(target, pos), m_enter(enter)
+{}
 
 void MouseHoverEvent::dispatchTouch(CCNode*, CCTouch*) const {}
 
@@ -301,10 +304,7 @@ bool MouseHoverEvent::isLeave() const {
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
 	if (m_target.has_value()) {
 		auto target = m_target.value().lock();
-		if (!target) {
-			return ListenerResult::Propagate;
-		}
-		if (!nodeIsVisible(target) || !target->hasAncestor(nullptr)) {
+		if (!target || !nodeIsVisible(target) || !target->hasAncestor(nullptr)) {
 			return ListenerResult::Propagate;
 		}
 		// Events will only be dispatched to nodes in the scene that are visible
@@ -322,14 +322,14 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 		// registering themselves as a "weak" target that will still 
 		// receive events
 		// 3. Nothing is capturing the mouse (event is "edible")
-		if (
+		if (!event->isSwallowed() && (
 			// Is this the node the event was meant for?
 			event->getTarget() == target ||
 			// Is this node eating events?
 			m_eaten.data() ||
 			// Is this event inside the node and edible?
 			(!event->getTarget() && inside)
-		) {
+		)) {
 			auto attrs = MouseAttributes::from(target);
 			// Post hover event
 			if (!attrs->isHovered() && inside) {
@@ -377,7 +377,6 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			// If the callback wants to swallow, or has captured the mouse, 
 			// capture the mouse and stop propagation here
 			if (s == MouseResult::Swallow || event->getTarget() == target) {
-				// todo: make the target the specific event listener that swallowed
 				event->swallow();
 				if (click) {
 					if (click->isDown()) {
@@ -391,7 +390,9 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 						);
 					}
 				}
-				return ListenerResult::Stop;
+				// keep propagating so every remaining listener gets their 
+				// hover event posted
+				return ListenerResult::Propagate;
 			}
 			return ListenerResult::Propagate;
 		}
@@ -417,7 +418,7 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 		auto s = fn(event);
 		if (s == MouseResult::Swallow) {
 			event->swallow();
-			return ListenerResult::Stop;
+			return ListenerResult::Propagate;
 		}
 		return ListenerResult::Propagate;
 	}

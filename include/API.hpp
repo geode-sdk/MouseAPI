@@ -14,6 +14,7 @@
 
 struct CCEGLViewModify;
 struct CCTouchDispatcherModify;
+class MouseEventListenerPool;
 
 namespace mouse {
     enum class MouseButton {
@@ -71,6 +72,7 @@ namespace mouse {
 
         friend class MouseEventFilter;
         friend struct CCTouchDispatcherModify;
+        friend class MouseEventListenerPool;
     
     public:
         bool isSwallowed() const;

@@ -29,8 +29,7 @@ namespace mouse {
         float getPreferredWidth();
         void fitToWidth(float width);
 
-        virtual void hover();
-        virtual void unhover();
+        virtual void hover(bool hovered);
         virtual void hide();
         virtual void select() = 0;
     };
@@ -52,7 +51,7 @@ namespace mouse {
     class MOUSEAPI_DLL SubMenuItem : public ContextMenuItem {
     protected:
         std::vector<ItemRef> m_items;
-        ContextMenu* m_menu;
+        ContextMenu* m_menu = nullptr;
 
         bool init(ContextMenu* menu, std::vector<ItemRef> const& items);
     
@@ -60,8 +59,7 @@ namespace mouse {
         static SubMenuItem* create(ContextMenu* menu, std::vector<ItemRef> const& items);
 
         void select() override;
-        void hover() override;
-        void unhover() override;
+        void hover(bool hovered) override;
         void hide() override;
     };
 

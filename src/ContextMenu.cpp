@@ -11,6 +11,12 @@ bool ContextMenuItem::init(ContextMenu* menu) {
     
     this->addChild(SpacerNode::create());
     this->setLayout(RowLayout::create());
+    this->template addEventListener<MouseEventFilter>([this](MouseEvent* event) {
+        if (auto hover = typeinfo_cast<MouseHoverEvent*>(event)) {
+            this->hover(m_hovered = hover->isEnter());
+        }
+        return MouseResult::Swallow;
+    });
 
     return true;
 }
@@ -55,14 +61,7 @@ void ContextMenuItem::draw() {
     CCNode::draw();
 }
 
-void ContextMenuItem::hover() {
-    m_hovered = true;
-}
-
-void ContextMenuItem::unhover() {
-    m_hovered = false;
-}
-
+void ContextMenuItem::hover(bool) {}
 void ContextMenuItem::hide() {}
 
 bool ActionMenuItem::init(ContextMenu* menu, std::string const& eventID) {
@@ -116,15 +115,14 @@ void SubMenuItem::select() {
     }
 }
 
-void SubMenuItem::hover() {
-    ContextMenuItem::hover();
-    this->select();
-}
-
-void SubMenuItem::unhover() {
-    ContextMenuItem::unhover();
-    m_menu->hide();
-    m_menu = nullptr;
+void SubMenuItem::hover(bool hovered) {
+    if (hovered) {
+        this->select();
+    }
+    else if (m_menu) {
+        m_menu->hide();
+        m_menu = nullptr;
+    }
 }
 
 void SubMenuItem::hide() {

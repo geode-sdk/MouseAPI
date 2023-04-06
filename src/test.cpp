@@ -67,8 +67,7 @@ struct $modify(MenuLayer) {
                         { "click", "my-event-id"_spr },
                     },
                     json::Object {
-                        { "text", "Click to Work?" },
-                        { "frame", "GJ_infoIcon_001.png" },
+                        { "text", "Sub menu" },
                         { "sub-menu", json::Array {
                             json::Object {
                                 { "text", "Sub menu!!" },

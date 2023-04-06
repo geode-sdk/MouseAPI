@@ -51,7 +51,7 @@ struct $modify(CCTouchDispatcher) {
     // void removeDelegate(CCTouchDelegate* delegate) {
     //     if (auto node = typeinfo_cast<CCNode*>(delegate)) {
     //         if (auto listener = node->template getAttribute<EventListenerProtocol*>(
-    //             "hjfod.mouse-api/listener"
+    //             "geode.mouse-api/listener"
     //         )) {
     //             node->removeEventListener(listener.value());
     //             Mouse::release(node);

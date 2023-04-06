@@ -77,10 +77,10 @@ struct $modify(MenuLayer) {
             return false;
         
         this->getChildByID("main-title")
-            ->setAttribute("hjfod.mouse-api/tooltip", "Omg tooltips");
+            ->setAttribute("geode.mouse-api/tooltip", "Omg tooltips");
 
         this->getChildByID("main-menu")
-            ->setAttribute("hjfod.mouse-api/context-menu",
+            ->setAttribute("geode.mouse-api/context-menu",
                 json::Array {
                     json::Object {
                         { "text", "Click to Work?" },

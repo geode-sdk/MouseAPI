@@ -14,7 +14,6 @@ namespace mouse {
     class MOUSEAPI_DLL ContextMenuItem : public cocos2d::CCNode {
     protected:
         ContextMenu* m_parentMenu;
-        bool m_hovered = false;
         cocos2d::CCNode* m_icon = nullptr;
         cocos2d::CCLabelBMFont* m_label = nullptr;
 
@@ -26,10 +25,10 @@ namespace mouse {
         void setIcon(cocos2d::CCNode* icon);
         void setText(std::string const& text);
 
-        float getPreferredWidth();
-        void fitToWidth(float width);
+        virtual float getPreferredWidth();
+        virtual void fitToWidth(float width);
 
-        virtual void hover(bool hovered);
+        virtual bool isHovered();
         virtual void hide();
         virtual void select() = 0;
     };
@@ -52,14 +51,20 @@ namespace mouse {
     protected:
         std::vector<ItemRef> m_items;
         ContextMenu* m_menu = nullptr;
+        cocos2d::CCSprite* m_arrow;
 
         bool init(ContextMenu* menu, std::vector<ItemRef> const& items);
     
+        void draw() override;
+
     public:
         static SubMenuItem* create(ContextMenu* menu, std::vector<ItemRef> const& items);
 
+        float getPreferredWidth() override;
+        void fitToWidth(float width) override;
+
+        bool isHovered() override;
         void select() override;
-        void hover(bool hovered) override;
         void hide() override;
     };
 
@@ -83,6 +88,7 @@ namespace mouse {
 
         cocos2d::CCNode* getTarget() const;
 
+        bool isHovered();
         void show(cocos2d::CCPoint const& pos);
         void hide();
     };

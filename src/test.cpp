@@ -1,5 +1,6 @@
 #include <Geode/modify/MenuLayer.hpp>
 #include "../include/API.hpp"
+#include "../include/ContextMenu.hpp"
 
 using namespace geode::prelude;
 using namespace mouse;
@@ -21,16 +22,14 @@ protected:
         this->addChild(m_label);
 
         this->template addEventListener<MouseEventFilter>([=](MouseEvent* event) {
-            if (auto hover = typeinfo_cast<MouseHoverEvent*>(event)) {
-                if (hover->isEnter()) {
-                    m_label->setString("Hovered!");
-                }
-                else {
-                    m_label->setString("Hi");
-                }
-            }
             if (MouseAttributes::from(this)->isHeld(MouseButton::Right)) {
                 m_label->setString("Right-clicked!");
+            }
+            else if (MouseAttributes::from(this)->isHovered()) {
+                m_label->setString("Hovered!");
+            }
+            else {
+                m_label->setString("Hi");
             }
             return MouseResult::Swallow;
         });
@@ -50,6 +49,28 @@ public:
     }
 };
 
+$execute {
+    new EventListener<ContextMenuFilter>(+[](CCNode*) {
+        FLAlertLayer::create("Hiii", "Yay it works", "OK")->show();
+        return ListenerResult::Propagate;
+    }, ContextMenuFilter("my-event-id"_spr));
+
+    new EventListener<ContextMenuFilter>(+[](CCNode* target) {
+        target->runAction(CCSequence::create(
+            CCEaseElasticOut::create(CCScaleBy::create(.25f, 1.25f), 2.f),
+            CCEaseElasticIn::create(CCScaleBy::create(.25f, 1 / 1.25f), 2.f),
+            nullptr
+        ));
+        return ListenerResult::Propagate;
+    }, ContextMenuFilter("my-bounce"_spr));
+
+    new EventListener<ContextMenuFilter>(+[](CCNode*) {
+        AppDelegate::get()->trySaveGame();
+        exit(0);
+        return ListenerResult::Propagate;
+    }, ContextMenuFilter("quit-game"_spr));
+};
+
 struct $modify(MenuLayer) {
     bool init() {
         if (!MenuLayer::init())
@@ -67,10 +88,15 @@ struct $modify(MenuLayer) {
                         { "click", "my-event-id"_spr },
                     },
                     json::Object {
+                        { "text", "Bounce Animation!" },
+                        { "click", "my-bounce"_spr },
+                    },
+                    json::Object {
                         { "text", "Sub menu" },
                         { "sub-menu", json::Array {
                             json::Object {
                                 { "text", "Sub menu!!" },
+                                { "click", "my-event-id"_spr },
                             }
                         } },
                     },

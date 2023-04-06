@@ -29,17 +29,8 @@ public:
 		DefaultEventListenerPool::remove(listener);
 	}
 
-	void handle(geode::Event* event) override {
-		if (m_capturing) {
-			m_capturing->handle(event);
-		}
-		else {
-			DefaultEventListenerPool::handle(event);
-		}
-	}
-
 	void sortListeners() {
-		log::info("sorting");
+		// log::info("sorting");
 		m_locked += 1;
 		// trigger all WeakRef locks (and frees) here because if they happen in 
 		// the middle of the sort that causes their event listeners to be freed 
@@ -87,16 +78,16 @@ public:
 				return ap.size() > bp.size();
 			}
 		);
-		for (auto a : m_listeners) {
-			if (!a) continue;
-			auto af = static_cast<MouseListener*>(a);
-			log::info("{}: {}",
-				af->getFilter().getTargetPriority(),
-				af->getFilter().getTarget()
-					.value_or(WeakRef<CCNode>(nullptr))
-					.lock().data()
-			);
-		}
+		// for (auto a : m_listeners) {
+		// 	if (!a) continue;
+		// 	auto af = static_cast<MouseListener*>(a);
+		// 	log::info("{}: {}",
+		// 		af->getFilter().getTargetPriority(),
+		// 		af->getFilter().getTarget()
+		// 			.value_or(WeakRef<CCNode>(nullptr))
+		// 			.lock().data()
+		// 	);
+		// }
 		m_locked -= 1;
 	}
 
@@ -308,35 +299,42 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			return ListenerResult::Propagate;
 		}
 		// Events will only be dispatched to nodes in the scene that are visible
-		auto inside =
+		bool inside =
 			m_ignorePosition ||
 			target->boundingBox().containsPoint(
 				target->getParent()->convertToNodeSpace(event->getPosition())
 			);
-
+		
+		bool capturing = !Mouse::get()->getCapturing() ||
+			Mouse::get()->getCapturing() == this->getListener();
+	 	
 		// Events will only be dispatched to the target under the 
 		// following conditions: 
 		// 1. The target is capturing the mouse
-		// 2. When the event is dispatched, if no other target has yet 
+		// 2. The event is meant for the target node specifically
+		// 3. When the event is dispatched, if no other target has yet 
 		// captured the mouse, another target can "eat" it, in other words 
 		// registering themselves as a "weak" target that will still 
 		// receive events
-		// 3. Nothing is capturing the mouse (event is "edible")
-		if (!event->isSwallowed() && (
-			// Is this the node the event was meant for?
-			event->getTarget() == target ||
-			// Is this node eating events?
-			m_eaten.data() ||
-			// Is this event inside the node and edible?
-			(!event->getTarget() && inside)
-		)) {
+		// 4. Nothing is capturing the mouse (event is "edible")
+		if (
+			this->getListener() == Mouse::get()->getCapturing() ||
+			!event->isSwallowed() && (
+				// Is this the node the event was meant for?
+				event->getTarget() == target ||
+				// Is this node eating events?
+				m_eaten.data() ||
+				// Is this event inside the node and edible?
+				(!event->getTarget() && inside)
+			)
+		) {
 			auto attrs = MouseAttributes::from(target);
 			// Post hover event
-			if (!attrs->isHovered() && inside) {
+			if (capturing && !attrs->isHovered() && inside) {
 				attrs->setHovered(true);
 				MouseHoverEvent(target, true, event->getPosition()).post();
 			}
-			else if (attrs->isHovered() && !inside) {
+			else if (capturing && attrs->isHovered() && !inside) {
 				attrs->setHovered(false);
 				MouseHoverEvent(target, false, event->getPosition()).post();
 			}
@@ -372,22 +370,22 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			// Release eaten only after dispatching the touch event so the 
 			// touch event can still access the touch
 			if (s != MouseResult::Leave && click && !click->isDown()) {
-				m_eaten = nullptr;	
+				m_eaten = nullptr;
 			}
 			// If the callback wants to swallow, or has captured the mouse, 
 			// capture the mouse and stop propagation here
-			if (s == MouseResult::Swallow || event->getTarget() == target) {
+			if (
+				s == MouseResult::Swallow ||
+				event->getTarget() == target ||
+				this->getListener() == Mouse::get()->getCapturing()
+			) {
 				event->swallow();
 				if (click) {
 					if (click->isDown()) {
-						MouseEventListenerPool::get()->capture(
-							static_cast<EventListener<MouseEventFilter>*>(this->getListener())
-						);
+						Mouse::get()->capture(static_cast<MouseListener*>(this->getListener()));
 					}
 					else {
-						MouseEventListenerPool::get()->release(
-							static_cast<EventListener<MouseEventFilter>*>(this->getListener())
-						);
+						Mouse::get()->release(static_cast<MouseListener*>(this->getListener()));
 					}
 				}
 				// keep propagating so every remaining listener gets their 
@@ -402,13 +400,10 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 			// Post hover leave event if necessary
 			if (attrs->isHovered() && !inside) {
 				attrs->setHovered(false);
-				attrs->clearHeld();
-				m_eaten = nullptr;
-				MouseHoverEvent(
-					target, false,
-					event->getPosition()
-				).post();
+				MouseHoverEvent(target, false, event->getPosition()).post();
 			}
+			attrs->clearHeld();
+			m_eaten = nullptr;
 			return ListenerResult::Propagate;
 		}
 	}

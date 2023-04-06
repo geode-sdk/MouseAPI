@@ -71,28 +71,29 @@ $execute {
     new EventListener<AttributeSetFilter>(
         +[](AttributeSetEvent* event) {
             auto node = event->node;
-            if (!node->getEventListener("tooltip"_spr)) {
-                node->template addEventListener<MouseEventFilter>(
-                    "tooltip"_spr,
-                    [=](MouseEvent* event) {
-                        auto tip = static_cast<Tooltip*>(CCScene::get()->getChildByID("tooltip"_spr));
-                        if (MouseAttributes::from(node)->isHovered()) {
-                            if (tip) {
-                                tip->move(event->getPosition() + ccp(5.f, 0.));
-                            }
-                            else {
-                                if (auto value = node->template getAttribute<std::string>("tooltip"_spr)) {
-                                    Tooltip::create(value.value())->show(event->getPosition() + ccp(5.f, 0.));
-                                }
-                            }
-                        }
-                        else if (tip) {
-                            tip->hide();
-                        }
-                        return MouseResult::Eat;
-                    }
-                );
+            if (node->getEventListener("tooltip"_spr)) {
+                return;
             }
+            node->template addEventListener<MouseEventFilter>(
+                "tooltip"_spr,
+                [=](MouseEvent* event) {
+                    auto tip = static_cast<Tooltip*>(CCScene::get()->getChildByID("tooltip"_spr));
+                    if (MouseAttributes::from(node)->isHovered()) {
+                        if (tip) {
+                            tip->move(event->getPosition() + ccp(5.f, 0.));
+                        }
+                        else {
+                            if (auto value = node->template getAttribute<std::string>("tooltip"_spr)) {
+                                Tooltip::create(value.value())->show(event->getPosition() + ccp(5.f, 0.));
+                            }
+                        }
+                    }
+                    else if (tip) {
+                        tip->hide();
+                    }
+                    return MouseResult::Eat;
+                }
+            );
         },
         AttributeSetFilter("tooltip"_spr)
     );

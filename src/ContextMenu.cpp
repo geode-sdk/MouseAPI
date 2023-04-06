@@ -1,5 +1,9 @@
 #include "../include/ContextMenu.hpp"
 
+static constexpr float ITEM_HEIGHT = 15.f;
+static constexpr float ITEM_PAD = 3.f;
+static constexpr float ITEM_THEIGHT = ITEM_HEIGHT - ITEM_PAD;
+
 using namespace geode::prelude;
 using namespace mouse;
 
@@ -9,11 +13,11 @@ bool ContextMenuItem::init(ContextMenu* menu) {
 
     m_parentMenu = menu;
     
-    this->addChild(SpacerNode::create());
-    this->setLayout(RowLayout::create());
     this->template addEventListener<MouseEventFilter>([this](MouseEvent* event) {
-        if (auto hover = typeinfo_cast<MouseHoverEvent*>(event)) {
-            this->hover(m_hovered = hover->isEnter());
+        if (auto click = typeinfo_cast<MouseClickEvent*>(event)) {
+            if (click->getButton() == MouseButton::Left && !click->isDown()) {
+                this->select();
+            }
         }
         return MouseResult::Swallow;
     });
@@ -22,11 +26,20 @@ bool ContextMenuItem::init(ContextMenu* menu) {
 }
 
 float ContextMenuItem::getPreferredWidth() {
-    return this->getLayout()->getSizeHint(this).width;
+    float width = ITEM_PAD * 2.f;
+    width += ITEM_HEIGHT; // icon
+    if (m_label) {
+        width += m_label->getScaledContentSize().width;
+    }
+    width += ITEM_HEIGHT;
+    return width;
 }
 
 void ContextMenuItem::fitToWidth(float width) {
-    this->setContentSize({ width, 20.f });
+    this->setContentSize({ width, ITEM_HEIGHT });
+    if (m_label) {
+        limitNodeSize(m_label, { width - ITEM_HEIGHT - ITEM_PAD * 2, ITEM_THEIGHT }, 1.f, .1f);
+    }
 }
 
 void ContextMenuItem::setIcon(cocos2d::CCNode* icon) {
@@ -34,34 +47,36 @@ void ContextMenuItem::setIcon(cocos2d::CCNode* icon) {
         m_icon->removeFromParent();
     }
     m_icon = icon;
-    if (icon) {
-        this->insertBefore(icon, nullptr);
-        limitNodeSize(icon, { 17.5f, 17.5f }, 1.f, .1f);
+    if (m_icon) {
+        m_icon->setPosition(ITEM_HEIGHT / 2, ITEM_HEIGHT / 2);
+        this->addChild(m_icon);
+        limitNodeSize(m_icon, { ITEM_THEIGHT, ITEM_THEIGHT }, 1.f, .1f);
     }
-    this->updateLayout();
 }
 
 void ContextMenuItem::setText(std::string const& text) {
-    if (!m_label) {
+    if (m_label) {
+        m_label->setString(text.c_str());
+    } else {
         m_label = CCLabelBMFont::create(text.c_str(), "chatFont.fnt");
-        if (m_icon) {
-            this->insertAfter(m_label, m_icon);
-        }
-        else {
-            this->insertBefore(m_label, nullptr);
-        }
-        this->updateLayout();
+        m_label->setAnchorPoint({ .0f, .5f });
+        m_label->setPosition(ITEM_HEIGHT + ITEM_PAD, ITEM_HEIGHT / 2);
+        this->addChild(m_label);
     }
 }
 
+bool ContextMenuItem::isHovered() {
+    return MouseAttributes::from(this)->isHovered();
+}
+
 void ContextMenuItem::draw() {
-    if (m_hovered) {
+    ccGLBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (this->isHovered()) {
         ccDrawSolidRect({ 0, 0 }, m_obContentSize, { 1.f, 1.f, 1.f, .25f });
     }
     CCNode::draw();
 }
 
-void ContextMenuItem::hover(bool) {}
 void ContextMenuItem::hide() {}
 
 bool ActionMenuItem::init(ContextMenu* menu, std::string const& eventID) {
@@ -93,6 +108,10 @@ bool SubMenuItem::init(ContextMenu* menu, std::vector<ItemRef> const& items) {
         return false;
 
     m_items = items;
+    m_arrow = CCSprite::createWithSpriteFrameName("GJ_arrow_01_001.png");
+    m_arrow->setFlipX(true);
+    limitNodeSize(m_arrow, { ITEM_THEIGHT, ITEM_THEIGHT }, 1.f, .1f);    
+    this->addChild(m_arrow);
 
     return true;
 }
@@ -107,17 +126,21 @@ SubMenuItem* SubMenuItem::create(ContextMenu* menu, std::vector<ItemRef> const& 
     return nullptr;
 }
 
-void SubMenuItem::select() {
-    if (!m_menu) {
-        auto bbox = this->boundingBox();
-        m_menu = ContextMenu::create(m_parentMenu->getTarget(), m_items);
-        m_menu->show({ bbox.getMaxX(), bbox.getMaxY() });
-    }
+float SubMenuItem::getPreferredWidth() {
+    return ContextMenuItem::getPreferredWidth();
 }
 
-void SubMenuItem::hover(bool hovered) {
-    if (hovered) {
-        this->select();
+void SubMenuItem::fitToWidth(float width) {
+    ContextMenuItem::fitToWidth(width);
+    m_arrow->setPosition({ width - ITEM_HEIGHT / 2, ITEM_HEIGHT / 2 });
+}
+
+void SubMenuItem::draw() {
+    ContextMenuItem::draw();
+    if (this->isHovered()) {
+        if (!m_menu) {
+            this->select();
+        }
     }
     else if (m_menu) {
         m_menu->hide();
@@ -125,9 +148,27 @@ void SubMenuItem::hover(bool hovered) {
     }
 }
 
+void SubMenuItem::select() {
+    if (!m_menu) {
+        auto bbox = this->boundingBox();
+        if (m_pParent) {
+            bbox.origin = m_pParent->convertToWorldSpace(bbox.origin);
+        }
+        m_menu = ContextMenu::create(m_parentMenu->getTarget(), m_items);
+        m_menu->show({ bbox.getMaxX(), bbox.getMaxY() });
+    }
+}
+
+bool SubMenuItem::isHovered() {
+    return MouseAttributes::from(this)->isHovered() || 
+        (m_menu ? m_menu->isHovered() : false);
+}
+
 void SubMenuItem::hide() {
-    m_menu->hide();
-    m_menu = nullptr;
+    if (m_menu) {
+        m_menu->hide();
+        m_menu = nullptr;
+    }
 }
 
 bool ContextMenu::init(CCNode* target) {
@@ -138,7 +179,7 @@ bool ContextMenu::init(CCNode* target) {
 
     m_bg = CCScale9Sprite::create("square02b_small-uhd.png", { 0, 0, 40, 40 });
     m_bg->setColor({ 0, 0, 0 });
-    m_bg->setOpacity(155);
+    m_bg->setOpacity(185);
     m_bg->setScale(.4f);
     this->addChild(m_bg);
 
@@ -281,6 +322,18 @@ CCNode* ContextMenu::getTarget() const {
     return m_target;
 }
 
+bool ContextMenu::isHovered() {
+    if (MouseAttributes::from(this)->isHovered()) {
+        return true;
+    }
+    for (auto& item : m_items) {
+        if (item->isHovered()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void ContextMenu::show(CCPoint const& pos) {
     if (!m_pParent) {
         CCScene::get()->addChild(this);
@@ -290,6 +343,9 @@ void ContextMenu::show(CCPoint const& pos) {
 }
 
 void ContextMenu::hide() {
+    for (auto& item : m_items) {
+        item->hide();
+    }
     this->removeFromParent();
 }
 
@@ -317,6 +373,7 @@ $execute {
                     return MouseResult::Swallow;
                 }
             );
+            Mouse::updateListeners();
         },
         AttributeSetFilter("context-menu"_spr)
     );
@@ -327,8 +384,12 @@ $execute {
             if (!click || !click->isDown()) {
                 return MouseResult::Leave;
             }
-            while (auto old = CCScene::get()->getChildByID("context-menu"_spr)) {
-                old->removeFromParent();
+            if (auto old = static_cast<ContextMenu*>(
+                CCScene::get()->getChildByID("context-menu"_spr)
+            )) {
+                if (!old->isHovered()) {
+                    old->hide();
+                }
             }
             return MouseResult::Leave;
         },

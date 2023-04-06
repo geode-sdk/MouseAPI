@@ -1,11 +1,8 @@
 #include "../include/ContextMenu.hpp"
 
-static constexpr float ITEM_HEIGHT = 15.f;
-static constexpr float ITEM_PAD = 3.f;
-static constexpr float ITEM_THEIGHT = ITEM_HEIGHT - ITEM_PAD;
-
 using namespace geode::prelude;
 using namespace mouse;
+
 
 bool ContextMenuItem::init(ContextMenu* menu) {
     if (!CCNode::init())
@@ -26,31 +23,40 @@ bool ContextMenuItem::init(ContextMenu* menu) {
 }
 
 float ContextMenuItem::getPreferredWidth() {
-    float width = ITEM_PAD * 2.f;
-    width += ITEM_HEIGHT; // icon
+    auto const& style = m_parentMenu->getStyle();
+    float width = style.padding * 2.f;
+    width += style.height; // icon
     if (m_label) {
         width += m_label->getScaledContentSize().width;
     }
-    width += ITEM_HEIGHT;
+    width += style.height;
     return width;
 }
 
 void ContextMenuItem::fitToWidth(float width) {
-    this->setContentSize({ width, ITEM_HEIGHT });
+    auto const& style = m_parentMenu->getStyle();
+    this->setContentSize({ width, style.height });
     if (m_label) {
-        limitNodeSize(m_label, { width - ITEM_HEIGHT - ITEM_PAD * 2, ITEM_THEIGHT }, 1.f, .1f);
+        limitNodeSize(m_label, {
+            width - style.height - style.padding * 2,
+            style.height - style.padding
+        }, 1.f, .1f);
     }
 }
 
-void ContextMenuItem::setIcon(cocos2d::CCNode* icon) {
+void ContextMenuItem::setIcon(CCNode* icon) {
     if (m_icon) {
         m_icon->removeFromParent();
     }
     m_icon = icon;
     if (m_icon) {
-        m_icon->setPosition(ITEM_HEIGHT / 2, ITEM_HEIGHT / 2);
+        auto const& style = m_parentMenu->getStyle();
+        m_icon->setPosition(style.height / 2, style.height / 2);
         this->addChild(m_icon);
-        limitNodeSize(m_icon, { ITEM_THEIGHT, ITEM_THEIGHT }, 1.f, .1f);
+        limitNodeSize(m_icon, {
+            style.height - style.padding * 2,
+            style.height - style.padding * 2
+        }, 1.f, .1f);
     }
 }
 
@@ -58,9 +64,14 @@ void ContextMenuItem::setText(std::string const& text) {
     if (m_label) {
         m_label->setString(text.c_str());
     } else {
-        m_label = CCLabelBMFont::create(text.c_str(), "chatFont.fnt");
+        auto const& style = m_parentMenu->getStyle();
+        m_label = CCLabelBMFont::create(
+            text.c_str(), style.fontName.c_str()
+        );
         m_label->setAnchorPoint({ .0f, .5f });
-        m_label->setPosition(ITEM_HEIGHT + ITEM_PAD, ITEM_HEIGHT / 2);
+        m_label->setColor(to3B(style.textColor));
+        m_label->setOpacity(style.textColor.a);
+        m_label->setPosition(style.height + style.padding, style.height / 2);
         this->addChild(m_label);
     }
 }
@@ -72,7 +83,7 @@ bool ContextMenuItem::isHovered() {
 void ContextMenuItem::draw() {
     ccGLBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     if (this->isHovered()) {
-        ccDrawSolidRect({ 0, 0 }, m_obContentSize, { 1.f, 1.f, 1.f, .25f });
+        ccDrawSolidRect({ 0, 0 }, m_obContentSize, to4F(m_parentMenu->getStyle().hoverColor));
     }
     CCNode::draw();
 }
@@ -107,10 +118,14 @@ bool SubMenuItem::init(ContextMenu* menu, std::vector<ItemRef> const& items) {
     if (!ContextMenuItem::init(menu))
         return false;
 
+    auto const& style = m_parentMenu->getStyle();
+
     m_items = items;
-    m_arrow = CCSprite::createWithSpriteFrameName("GJ_arrow_01_001.png");
-    m_arrow->setFlipX(true);
-    limitNodeSize(m_arrow, { ITEM_THEIGHT, ITEM_THEIGHT }, 1.f, .1f);    
+    m_arrow = CCSprite::createWithSpriteFrameName(style.arrowSprite.c_str());
+    m_arrow->setFlipX(style.flipArrow);
+    m_arrow->setColor(to3B(style.arrowColor));
+    m_arrow->setOpacity(style.arrowColor.a);
+    limitNodeSize(m_arrow, { style.arrowSize, style.arrowSize }, 1.f, .1f);
     this->addChild(m_arrow);
 
     return true;
@@ -132,7 +147,8 @@ float SubMenuItem::getPreferredWidth() {
 
 void SubMenuItem::fitToWidth(float width) {
     ContextMenuItem::fitToWidth(width);
-    m_arrow->setPosition({ width - ITEM_HEIGHT / 2, ITEM_HEIGHT / 2 });
+    auto const& style = m_parentMenu->getStyle();
+    m_arrow->setPosition({ width - style.height / 2, style.height / 2 });
 }
 
 void SubMenuItem::draw() {
@@ -171,15 +187,16 @@ void SubMenuItem::hide() {
     }
 }
 
-bool ContextMenu::init(CCNode* target) {
+bool ContextMenu::init(CCNode* target, ContextMenuStyle const& style) {
     if (!CCNode::init())
         return false;
     
     m_target = target;
+    m_style = style;
 
-    m_bg = CCScale9Sprite::create("square02b_small-uhd.png", { 0, 0, 40, 40 });
-    m_bg->setColor({ 0, 0, 0 });
-    m_bg->setOpacity(185);
+    m_bg = CCScale9Sprite::create(m_style.bgSprite.c_str());
+    m_bg->setColor(to3B(style.bgColor));
+    m_bg->setOpacity(style.bgColor.a);
     m_bg->setScale(.4f);
     this->addChild(m_bg);
 
@@ -188,7 +205,7 @@ bool ContextMenu::init(CCNode* target) {
         RowLayout::create()
             ->setGrowCrossAxis(true)
             ->setAxisAlignment(AxisAlignment::Even)
-            ->setGap(0.f)
+            ->setGap(style.itemGap)
     );
     this->addChild(m_container);
 
@@ -197,9 +214,9 @@ bool ContextMenu::init(CCNode* target) {
     return true;
 }
 
-ContextMenu* ContextMenu::create(cocos2d::CCNode* target) {
+ContextMenu* ContextMenu::create(CCNode* target, ContextMenuStyle const& style) {
     auto ret = new ContextMenu;
-    if (ret && ret->init(target)) {
+    if (ret && ret->init(target, style)) {
         ret->autorelease();
         return ret;
     }
@@ -207,14 +224,32 @@ ContextMenu* ContextMenu::create(cocos2d::CCNode* target) {
     return nullptr;
 }
 
-ContextMenu* ContextMenu::create(cocos2d::CCNode* target, json::Value const& items) {
-    auto ret = ContextMenu::create(target);
+ContextMenu* ContextMenu::create(
+    CCNode* target, json::Value const& rawItems, ContextMenuStyle const& rawStyle
+) {
+    auto style = rawStyle;
+    auto items = rawItems;
+    if (rawItems.is_object()) {
+        try {
+            // todo: parse style
+        }
+        catch(...) {}
+        try {
+            items = rawItems["items"];
+        }
+        catch(...) {
+            items = json::Array { "Missing \"items\"" };
+        }
+    }
+    auto ret = ContextMenu::create(target, style);
     ret->loadItems(ret->parseItems(items));
     return ret;
 }
 
-ContextMenu* ContextMenu::create(CCNode* target, std::vector<ItemRef> const& items) {
-    auto ret = ContextMenu::create(target);
+ContextMenu* ContextMenu::create(
+    CCNode* target, std::vector<ItemRef> const& items, ContextMenuStyle const& style
+) {
+    auto ret = ContextMenu::create(target, style);
     ret->loadItems(items);
     return ret;
 }
@@ -229,7 +264,7 @@ void ContextMenu::loadItems(std::vector<ItemRef> const& items) {
             width = w;
         }
     }
-    width = clamp(width, 100.f, 160.f);
+    width = clamp(width, m_style.minWidth, m_style.maxWidth);
 
     for (auto& item : items) {
         m_container->addChild(item);
@@ -242,7 +277,7 @@ void ContextMenu::loadItems(std::vector<ItemRef> const& items) {
     m_container->setContentSize({ width, containerHeight });
     m_container->updateLayout();
 
-    auto height = clamp(containerHeight, 0.f, 200.f);
+    auto height = clamp(containerHeight, 0.f, m_style.maxHeight);
 
     this->setContentSize({ width, height });
     m_bg->setContentSize(m_obContentSize / m_bg->getScale());
@@ -320,6 +355,10 @@ std::vector<ItemRef> ContextMenu::parseItems(json::Value const& value) {
 
 CCNode* ContextMenu::getTarget() const {
     return m_target;
+}
+
+ContextMenuStyle const& ContextMenu::getStyle() const {
+    return m_style;
 }
 
 bool ContextMenu::isHovered() {

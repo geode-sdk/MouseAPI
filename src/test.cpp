@@ -69,6 +69,16 @@ $execute {
         exit(0);
         return ListenerResult::Propagate;
     }, ContextMenuFilter("quit-game"_spr));
+
+    new EventListener<ContextMenuDragFilter>(+[](CCNode* target, float value) {
+        target->setPositionY(value);
+        return ListenerResult::Propagate;
+    }, ContextMenuDragFilter("my-drag"_spr));
+
+    new EventListener<ContextMenuDragInitFilter>(+[](CCNode* target, float* value) {
+        *value = target->getPositionY();
+        return ListenerResult::Stop;
+    }, ContextMenuDragInitFilter("my-drag"_spr));
 };
 
 struct $modify(MenuLayer) {
@@ -78,6 +88,18 @@ struct $modify(MenuLayer) {
         
         this->getChildByID("main-title")
             ->setAttribute("geode.mouse-api/tooltip", "Omg tooltips");
+        
+        this->getChildByID("profile-menu")
+            ->setAttribute("geode.mouse-api/context-menu",
+                buildContextMenu()
+                    .addItem("Hiii", "my-event-id"_spr)
+                    .addItem("Ba", "my-event-id"_spr)
+                    .addItem("Bo", "my-event-id"_spr)
+                    .addSubMenu("Test", buildContextMenu()
+                        .addItem("Yahoo!", "my-bounce"_spr)
+                        .addItem("Fantastic", "__invalid")
+                    )
+            );
 
         this->getChildByID("main-menu")
             ->setAttribute("geode.mouse-api/context-menu",
@@ -90,6 +112,11 @@ struct $modify(MenuLayer) {
                     json::Object {
                         { "text", "Bounce Animation!" },
                         { "click", "my-bounce"_spr },
+                    },
+                    json::Object {
+                        { "text", "Drag me" },
+                        { "precision", 1.0 },
+                        { "drag", "my-drag"_spr },
                     },
                     json::Object {
                         { "text", "Sub menu" },

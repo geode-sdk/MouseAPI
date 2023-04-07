@@ -3,18 +3,31 @@
 using namespace geode::prelude;
 using namespace mouse;
 
-
 bool ContextMenuItem::init(ContextMenu* menu) {
     if (!CCNode::init())
         return false;
 
     m_parentMenu = menu;
-    
+    m_hoverBG = CCScale9Sprite::create(menu->getStyle().hoverSprite.c_str());
+    m_hoverBG->setOpacity(0);
+    m_hoverBG->setScale(.4f);
+    m_hoverBG->setColor(to3B(m_parentMenu->getStyle().hoverColor));
+    this->addChild(m_hoverBG);
+
     this->template addEventListener<MouseEventFilter>([this](MouseEvent* event) {
         if (auto click = typeinfo_cast<MouseClickEvent*>(event)) {
+            m_lastDrag = event->getPosition();
             if (click->getButton() == MouseButton::Left && !click->isDown()) {
                 this->select();
             }
+        }
+        m_dragged = typeinfo_cast<MouseMoveEvent*>(event);
+        if (m_dragged && MouseAttributes::from(this)->isHeld(MouseButton::Left)) {
+            this->drag(event->getPosition().y - m_lastDrag.y);
+            m_lastDrag = event->getPosition();
+        }
+        if (auto scroll = typeinfo_cast<MouseScrollEvent*>(event)) {
+            this->drag(-scroll->getDeltaY());
         }
         return MouseResult::Swallow;
     });
@@ -27,6 +40,10 @@ float ContextMenuItem::getPreferredWidth() {
     float width = style.padding * 2.f;
     width += style.height; // icon
     if (m_label) {
+        limitNodeSize(m_label, {
+            style.maxWidth,
+            style.height - style.padding * 2
+        }, 1.f, .1f);
         width += m_label->getScaledContentSize().width;
     }
     width += style.height;
@@ -36,10 +53,15 @@ float ContextMenuItem::getPreferredWidth() {
 void ContextMenuItem::fitToWidth(float width) {
     auto const& style = m_parentMenu->getStyle();
     this->setContentSize({ width, style.height });
+    m_hoverBG->setContentSize(
+        (m_obContentSize - ccp(style.padding, style.padding)) /
+            m_hoverBG->getScale()
+    );
+    m_hoverBG->setPosition(m_obContentSize / 2);
     if (m_label) {
         limitNodeSize(m_label, {
-            width - style.height - style.padding * 2,
-            style.height - style.padding
+            width - style.height * 2,
+            style.height - style.padding * 2
         }, 1.f, .1f);
     }
 }
@@ -71,24 +93,30 @@ void ContextMenuItem::setText(std::string const& text) {
         m_label->setAnchorPoint({ .0f, .5f });
         m_label->setColor(to3B(style.textColor));
         m_label->setOpacity(style.textColor.a);
-        m_label->setPosition(style.height + style.padding, style.height / 2);
+        m_label->setPosition(style.height, style.height / 2);
         this->addChild(m_label);
     }
 }
 
-bool ContextMenuItem::isHovered() {
-    return MouseAttributes::from(this)->isHovered();
-}
-
 void ContextMenuItem::draw() {
+    auto const& style = m_parentMenu->getStyle();
     ccGLBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     if (this->isHovered()) {
-        ccDrawSolidRect({ 0, 0 }, m_obContentSize, to4F(m_parentMenu->getStyle().hoverColor));
+        m_hoverBG->setOpacity(style.hoverColor.a);
+    }
+    else {
+        m_hoverBG->setOpacity(0);
     }
     CCNode::draw();
 }
 
+bool ContextMenuItem::isHovered() {
+    return m_dragged || MouseAttributes::from(this)->isHovered();
+}
+
 void ContextMenuItem::hide() {}
+void ContextMenuItem::select() {}
+void ContextMenuItem::drag(float) {}
 
 bool ActionMenuItem::init(ContextMenu* menu, std::string const& eventID) {
     if (!ContextMenuItem::init(menu))
@@ -111,16 +139,73 @@ ActionMenuItem* ActionMenuItem::create(ContextMenu* menu, std::string const& eve
 
 void ActionMenuItem::select() {
     ContextMenuEvent(m_eventID, m_parentMenu->getTarget()).post();
-    m_parentMenu->hide();
+    m_parentMenu->getTopMostMenu()->hide();
 }
 
-bool SubMenuItem::init(ContextMenu* menu, std::vector<ItemRef> const& items) {
+bool DragMenuItem::init(ContextMenu* menu, std::string const& eventID) {
+    if (!ContextMenuItem::init(menu))
+        return false;
+
+    m_eventID = eventID;
+    ContextMenuDragInitEvent(eventID, menu->getTarget(), &m_value).post();
+
+    return true;
+}
+
+DragMenuItem* DragMenuItem::create(ContextMenu* menu, std::string const& eventID) {
+    auto ret = new DragMenuItem();
+    if (ret && ret->init(menu, eventID)) {
+        ret->autorelease();
+        return ret;
+    }
+    CC_SAFE_DELETE(ret);
+    return nullptr;
+}
+
+void DragMenuItem::updateText() {
+    if (!m_label) {
+        this->setText("Value");
+    }
+    m_label->setString(fmt::format("{}: {}", m_text, m_value).c_str());
+}
+
+void DragMenuItem::setText(std::string const& text) {
+    m_text = text;
+    ContextMenuItem::setText(text);
+    this->updateText();
+}
+
+void DragMenuItem::setValue(float value) {
+    m_value = value;
+    this->updateText();
+}
+
+void DragMenuItem::setRate(float rate) {
+    m_rate = rate;
+}
+
+void DragMenuItem::setPrecision(float precision) {
+    m_precision = precision;
+}
+
+void DragMenuItem::drag(float delta) {
+    if (m_precision > .000001f) {
+        m_value = roundf((m_value + delta * m_rate) / m_precision) * m_precision;
+    }
+    else {
+        m_value += delta * m_rate;
+    }
+    this->updateText();
+    ContextMenuDragEvent(m_eventID, m_parentMenu->getTarget(), m_value).post();
+}
+
+bool SubMenuItem::init(ContextMenu* menu, json::Value const& json) {
     if (!ContextMenuItem::init(menu))
         return false;
 
     auto const& style = m_parentMenu->getStyle();
 
-    m_items = items;
+    m_menuJson = json;
     m_arrow = CCSprite::createWithSpriteFrameName(style.arrowSprite.c_str());
     m_arrow->setFlipX(style.flipArrow);
     m_arrow->setColor(to3B(style.arrowColor));
@@ -131,9 +216,9 @@ bool SubMenuItem::init(ContextMenu* menu, std::vector<ItemRef> const& items) {
     return true;
 }
 
-SubMenuItem* SubMenuItem::create(ContextMenu* menu, std::vector<ItemRef> const& items) {
+SubMenuItem* SubMenuItem::create(ContextMenu* menu, json::Value const& json) {
     auto ret = new SubMenuItem;
-    if (ret && ret->init(menu, items)) {
+    if (ret && ret->init(menu, json)) {
         ret->autorelease();
         return ret;
     }
@@ -154,9 +239,7 @@ void SubMenuItem::fitToWidth(float width) {
 void SubMenuItem::draw() {
     ContextMenuItem::draw();
     if (this->isHovered()) {
-        if (!m_menu) {
-            this->select();
-        }
+        this->select();
     }
     else if (m_menu) {
         m_menu->hide();
@@ -165,12 +248,12 @@ void SubMenuItem::draw() {
 }
 
 void SubMenuItem::select() {
-    if (!m_menu) {
+    if (!m_menu && m_parentMenu) {
         auto bbox = this->boundingBox();
         if (m_pParent) {
             bbox.origin = m_pParent->convertToWorldSpace(bbox.origin);
         }
-        m_menu = ContextMenu::create(m_parentMenu->getTarget(), m_items);
+        m_menu = ContextMenu::create(m_parentMenu->getTarget(), m_menuJson, m_parentMenu);
         m_menu->show({ bbox.getMaxX(), bbox.getMaxY() });
     }
 }
@@ -185,18 +268,45 @@ void SubMenuItem::hide() {
         m_menu->hide();
         m_menu = nullptr;
     }
+    m_parentMenu = nullptr;
 }
 
-bool ContextMenu::init(CCNode* target, ContextMenuStyle const& style) {
+bool ContextMenu::init(CCNode* target, json::Value const& json, ContextMenu* parent) {
     if (!CCNode::init())
         return false;
     
     m_target = target;
-    m_style = style;
+    m_parentMenu = parent ? parent : this;
 
-    m_bg = CCScale9Sprite::create(m_style.bgSprite.c_str());
-    m_bg->setColor(to3B(style.bgColor));
-    m_bg->setOpacity(style.bgColor.a);
+    json::Value items;
+    if (json.is_object()) {
+        try {
+            m_style = json["style"].template as<ContextMenuStyle>();
+        } catch(...) {}
+
+        try {
+            items = json["items"];
+        } catch(...) {
+            items = json::Array {
+                json::Object {
+                    { "text", "Missing \"items\"" },
+                    { "click", "" },
+                }
+            };
+        }
+    }
+    else {
+        items = json;
+    }
+
+    if (m_style.bgSpriteIsFrame) {
+        m_bg = CCScale9Sprite::createWithSpriteFrameName(m_style.bgSprite.c_str());
+    }
+    else {
+        m_bg = CCScale9Sprite::create(m_style.bgSprite.c_str());
+    }
+    m_bg->setColor(to3B(m_style.bgColor));
+    m_bg->setOpacity(m_style.bgColor.a);
     m_bg->setScale(.4f);
     this->addChild(m_bg);
 
@@ -204,84 +314,26 @@ bool ContextMenu::init(CCNode* target, ContextMenuStyle const& style) {
     m_container->setLayout(
         RowLayout::create()
             ->setGrowCrossAxis(true)
+            ->setCrossAxisOverflow(false)
             ->setAxisAlignment(AxisAlignment::Even)
-            ->setGap(style.itemGap)
+            ->setGap(m_style.itemGap)
     );
     this->addChild(m_container);
 
+    this->parseItems(items);
     this->setAnchorPoint({ 0.f, 1.f });
 
     return true;
 }
 
-ContextMenu* ContextMenu::create(CCNode* target, ContextMenuStyle const& style) {
+ContextMenu* ContextMenu::create(CCNode* target, json::Value const& json, ContextMenu* parent) {
     auto ret = new ContextMenu;
-    if (ret && ret->init(target, style)) {
+    if (ret && ret->init(target, json, parent)) {
         ret->autorelease();
         return ret;
     }
     CC_SAFE_DELETE(ret);
     return nullptr;
-}
-
-ContextMenu* ContextMenu::create(
-    CCNode* target, json::Value const& rawItems, ContextMenuStyle const& rawStyle
-) {
-    auto style = rawStyle;
-    auto items = rawItems;
-    if (rawItems.is_object()) {
-        try {
-            // todo: parse style
-        }
-        catch(...) {}
-        try {
-            items = rawItems["items"];
-        }
-        catch(...) {
-            items = json::Array { "Missing \"items\"" };
-        }
-    }
-    auto ret = ContextMenu::create(target, style);
-    ret->loadItems(ret->parseItems(items));
-    return ret;
-}
-
-ContextMenu* ContextMenu::create(
-    CCNode* target, std::vector<ItemRef> const& items, ContextMenuStyle const& style
-) {
-    auto ret = ContextMenu::create(target, style);
-    ret->loadItems(items);
-    return ret;
-}
-
-void ContextMenu::loadItems(std::vector<ItemRef> const& items) {
-    m_items = items;
-
-    float width = 0.f;
-    for (auto& item : items) {
-        auto w = item->getPreferredWidth();
-        if (w > width) {
-            width = w;
-        }
-    }
-    width = clamp(width, m_style.minWidth, m_style.maxWidth);
-
-    for (auto& item : items) {
-        m_container->addChild(item);
-        item->fitToWidth(width);
-        item->updateLayout();
-    }
-    auto containerHeight = static_cast<RowLayout*>(m_container->getLayout())
-        ->getSizeHint(m_container).height;
-
-    m_container->setContentSize({ width, containerHeight });
-    m_container->updateLayout();
-
-    auto height = clamp(containerHeight, 0.f, m_style.maxHeight);
-
-    this->setContentSize({ width, height });
-    m_bg->setContentSize(m_obContentSize / m_bg->getScale());
-    m_bg->setPosition(m_obContentSize / 2);
 }
 
 ActionMenuItem* ContextMenu::createError(std::string const& msg) {
@@ -290,14 +342,13 @@ ActionMenuItem* ContextMenu::createError(std::string const& msg) {
     return item;
 }
 
-std::vector<ItemRef> ContextMenu::parseItems(json::Value const& value) {
+void ContextMenu::parseItems(json::Value const& value) {
     std::vector<ItemRef> items;
 
     if (!value.is_array()) {
-        return { this->createError("Context menu is not an array") };
+        items = { this->createError("Context menu is not an array") };
     }
-
-    for (auto item : value.as_array()) {
+    else for (auto item : value.as_array()) {
         if (!item.is_object()) {
             items.push_back(this->createError("Item is not an object"));
             continue;
@@ -306,14 +357,36 @@ std::vector<ItemRef> ContextMenu::parseItems(json::Value const& value) {
         bool hasTextOrIcon = false;
         ContextMenuItem* item;
         if (obj.count("sub-menu")) {
-            auto sub = this->parseItems(obj["sub-menu"]);
-            item = SubMenuItem::create(this, sub);
+            item = SubMenuItem::create(this, obj["sub-menu"]);
         }
         else if (obj.count("click")) {
             try {
                 item = ActionMenuItem::create(this, obj["click"].as_string());
             } catch(...) {
                 items.push_back(this->createError("Invalid \"click\""));
+                continue;
+            }
+        }
+        else if (obj.count("drag")) {
+            try {
+                item = DragMenuItem::create(this, obj["drag"].as_string());
+                if (obj.count("value")) {
+                    static_cast<DragMenuItem*>(item)->setValue(
+                        static_cast<float>(obj["value"].as_double())
+                    );
+                }
+                if (obj.count("rate")) {
+                    static_cast<DragMenuItem*>(item)->setRate(
+                        static_cast<float>(obj["rate"].as_double())
+                    );
+                }
+                if (obj.count("precision")) {
+                    static_cast<DragMenuItem*>(item)->setPrecision(
+                        static_cast<float>(obj["precision"].as_double())
+                    );
+                }
+            } catch(...) {
+                items.push_back(this->createError("Invalid \"drag\", \"value\", or \"rate\""));
                 continue;
             }
         }
@@ -350,7 +423,33 @@ std::vector<ItemRef> ContextMenu::parseItems(json::Value const& value) {
         items.push_back(item);
     }
 
-    return items;
+    m_items = items;
+
+    float width = 0.f;
+    for (auto& item : items) {
+        auto w = item->getPreferredWidth();
+        if (w > width) {
+            width = w;
+        }
+    }
+    width = clamp(width, m_style.minWidth, m_style.maxWidth);
+
+    for (auto& item : items) {
+        m_container->addChild(item);
+        item->fitToWidth(width);
+        item->updateLayout();
+    }
+    auto containerHeight = static_cast<RowLayout*>(m_container->getLayout())
+        ->getSizeHint(m_container).height;
+    
+    auto height = clamp(containerHeight, 0.f, m_style.maxHeight);
+
+    m_container->setContentSize({ width, height });
+    m_container->updateLayout();
+
+    this->setContentSize({ width, height });
+    m_bg->setContentSize(m_obContentSize / m_bg->getScale());
+    m_bg->setPosition(m_obContentSize / 2);
 }
 
 CCNode* ContextMenu::getTarget() const {
@@ -359,6 +458,17 @@ CCNode* ContextMenu::getTarget() const {
 
 ContextMenuStyle const& ContextMenu::getStyle() const {
     return m_style;
+}
+
+ContextMenu* ContextMenu::getParentMenu() const {
+    return m_parentMenu;
+}
+
+ContextMenu* ContextMenu::getTopMostMenu() const {
+    if (m_parentMenu == this) {
+        return m_parentMenu;
+    }
+    return m_parentMenu->getParentMenu();
 }
 
 bool ContextMenu::isHovered() {
@@ -378,7 +488,25 @@ void ContextMenu::show(CCPoint const& pos) {
         CCScene::get()->addChild(this);
     }
     this->setZOrder(CCScene::get()->getHighestChildZ() + 100);
-    this->setPosition(this->getParent()->convertToWorldSpace(pos));
+
+    auto winSize = CCDirector::get()->getWinSize();
+    auto clampedPos = pos;
+    while (clampedPos.x + this->getScaledContentSize().width > winSize.width) {
+        clampedPos.x -= this->getScaledContentSize().width;
+    }
+    while (clampedPos.y - this->getScaledContentSize().height < 0.f) {
+        clampedPos.y += this->getScaledContentSize().height;
+    }
+    if (
+        (clampedPos.x != pos.x && m_parentMenu != this) ||
+        m_parentMenu->getPositionX() + m_parentMenu->getScaledContentSize().width * 2 > winSize.width
+    ) {
+        if (clampedPos.x == pos.x) {
+            clampedPos.x -= this->getScaledContentSize().width;
+        }
+        clampedPos.x -= m_parentMenu->getScaledContentSize().width;
+    }
+    this->setPosition(this->getParent()->convertToNodeSpace(clampedPos));
 }
 
 void ContextMenu::hide() {
@@ -423,12 +551,19 @@ $execute {
             if (!click || !click->isDown()) {
                 return MouseResult::Leave;
             }
-            if (auto old = static_cast<ContextMenu*>(
+            while (auto old = static_cast<ContextMenu*>(
                 CCScene::get()->getChildByID("context-menu"_spr)
             )) {
-                if (!old->isHovered()) {
+                old->setID("context-menu-checked"_spr);
+                if (!old->getTopMostMenu()->isHovered()) {
                     old->hide();
                 }
+            }
+            // reset IDs of unhidden menus
+            while (auto old = static_cast<ContextMenu*>(
+                CCScene::get()->getChildByID("context-menu-checked"_spr)
+            )) {
+                old->setID("context-menu"_spr);
             }
             return MouseResult::Leave;
         },

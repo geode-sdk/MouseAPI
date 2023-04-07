@@ -89,7 +89,19 @@ struct $modify(CCTextInputNode) {
         if (!CCTextInputNode::init(width, height, caption, thonburi, maxCharCount, font))
             return false;
         
-        this->ignoreAnchorPointForPosition(false);
+        this->template addEventListener<MouseEventFilter>(
+            "mouse"_spr,
+            [=](MouseEvent* ev) {
+                auto bbox = this->boundingBox();
+                bbox.origin -= this->getContentSize() * this->getAnchorPoint();
+                if (bbox.containsPoint(this->getParent()->convertToNodeSpace(ev->getPosition()))) {
+                    return MouseResult::Swallow;
+                }
+                return MouseResult::Leave;
+            },
+            true
+        );
+        Mouse::updateListeners();
 
         return true;
     }

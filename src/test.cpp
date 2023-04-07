@@ -5,7 +5,7 @@
 using namespace geode::prelude;
 using namespace mouse;
 
-#ifndef MOUSEAPI_TEST
+#ifdef MOUSEAPI_TEST
 
 class HoveredNode : public CCNode {
 protected:

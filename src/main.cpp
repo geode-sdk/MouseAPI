@@ -15,6 +15,7 @@ using MouseListener = EventListener<MouseEventFilter>;
 class MouseEventListenerPool : public geode::DefaultEventListenerPool {
 protected:
 	MouseListener* m_capturing = nullptr;
+	std::atomic_bool m_sorting = false;
 
 public:
 	bool add(geode::EventListenerProtocol* listener) override {
@@ -30,20 +31,31 @@ public:
 	}
 
 	void sortListeners() {
-		// log::info("sorting");
+		// do not allow recursive sorting to happen in any way
+		if (m_sorting) {
+			return;
+		}
+		m_sorting = true;
+		// log::debug("sortListeners");
 		m_locked += 1;
 		// trigger all WeakRef locks (and frees) here because if they happen in 
 		// the middle of the sort that causes their event listeners to be freed 
 		// aswell which makes them try to mutate m_listeners which is totally UB 
 		// while it's being sorted
-		for (auto a : m_listeners) {
-			if (a) {
-				auto filter = static_cast<MouseListener*>(a)->getFilter();
-				if (auto target = filter.getTarget()) {
-					target.value().lock();
+		// has to be double-iterated because it might be that a WeakRef that is 
+		// freed in the loop is the only other ref to another WeakRef in the loop 
+		// which would then promptly be freed during the sort
+		for (auto _ : m_listeners) {
+			for (auto a : m_listeners) {
+				if (a) {
+					auto filter = static_cast<MouseListener*>(a)->getFilter();
+					if (auto target = filter.getTarget()) {
+						target.value().valid();
+					}
 				}
 			}
 		}
+		// log::debug("sorting");
 		// sort all mouse listeners to put the nodes closer on the screen at the front
 		std::sort(
 			m_listeners.begin(),
@@ -78,10 +90,12 @@ public:
 				return ap.size() > bp.size();
 			}
 		);
+		// log::debug("sorting done");
 		// for (auto a : m_listeners) {
 		// 	if (!a) continue;
 		// 	auto af = static_cast<MouseListener*>(a);
-		// 	log::info("{}: {}",
+		// 	log::info("af: {}", af);
+		// 	log::debug("{}: {}",
 		// 		af->getFilter().getTargetPriority(),
 		// 		af->getFilter().getTarget()
 		// 			.value_or(WeakRef<CCNode>(nullptr))
@@ -89,6 +103,7 @@ public:
 		// 	);
 		// }
 		m_locked -= 1;
+		m_sorting = false;
 	}
 
 	MouseListener* getCapturing() const {

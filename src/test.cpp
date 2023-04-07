@@ -73,12 +73,22 @@ $execute {
     new EventListener<ContextMenuDragFilter>(+[](CCNode* target, float value) {
         target->setPositionY(value);
         return ListenerResult::Propagate;
-    }, ContextMenuDragFilter("my-drag"_spr));
+    }, ContextMenuDragFilter("node-y"_spr));
 
     new EventListener<ContextMenuDragInitFilter>(+[](CCNode* target, float* value) {
         *value = target->getPositionY();
         return ListenerResult::Stop;
-    }, ContextMenuDragInitFilter("my-drag"_spr));
+    }, ContextMenuDragInitFilter("node-y"_spr));
+
+    new EventListener<ContextMenuDragFilter>(+[](CCNode* target, float value) {
+        target->setPositionX(value);
+        return ListenerResult::Propagate;
+    }, ContextMenuDragFilter("node-x"_spr));
+
+    new EventListener<ContextMenuDragInitFilter>(+[](CCNode* target, float* value) {
+        *value = target->getPositionX();
+        return ListenerResult::Stop;
+    }, ContextMenuDragInitFilter("node-x"_spr));
 };
 
 struct $modify(MenuLayer) {
@@ -93,8 +103,8 @@ struct $modify(MenuLayer) {
             ->setAttribute("geode.mouse-api/context-menu",
                 buildContextMenu()
                     .addItem("Hiii", "my-event-id"_spr)
-                    .addItem("Ba", "my-event-id"_spr)
-                    .addItem("Bo", "my-event-id"_spr)
+                    .addItem("Ba", "my-event-id"_spr, .5f)
+                    .addItem("Bo", "my-event-id"_spr, .5f)
                     .addSubMenu("Test", buildContextMenu()
                         .addItem("Yahoo!", "my-bounce"_spr)
                         .addItem("Fantastic", "__invalid")
@@ -114,9 +124,16 @@ struct $modify(MenuLayer) {
                         { "click", "my-bounce"_spr },
                     },
                     json::Object {
-                        { "text", "Drag me" },
+                        { "text", "X" },
                         { "precision", 1.0 },
-                        { "drag", "my-drag"_spr },
+                        { "drag", "node-x"_spr },
+                        { "ratio", .5 },
+                    },
+                    json::Object {
+                        { "text", "Y" },
+                        { "precision", 1.0 },
+                        { "drag", "node-y"_spr },
+                        { "ratio", .5 },
                     },
                     json::Object {
                         { "text", "Sub menu" },

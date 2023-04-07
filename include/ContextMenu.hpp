@@ -14,7 +14,7 @@ namespace mouse {
         float maxHeight = 140.f;
         float itemGap = 0.f;
         std::string fontName = "chatFont.fnt";
-        std::string arrowSprite = "arrow.png"_spr;
+        std::string arrowSprite = "geode.mouse-api/arrow.png";
         bool flipArrow = false;
         float arrowSize = 5.5f;
         std::string bgSprite = "square02b_small.png";
@@ -23,7 +23,7 @@ namespace mouse {
         cocos2d::ccColor4B bgColor = { 0, 0, 0, 215 };
         cocos2d::ccColor4B textColor = { 255, 255, 255, 255 };
         cocos2d::ccColor4B hoverColor = { 255, 255, 255, 45 };
-        cocos2d::ccColor4B arrowColor = { 255, 255, 255, 185 };
+        cocos2d::ccColor4B arrowColor = { 255, 255, 255, 255 };
     };
 }
 
@@ -102,11 +102,13 @@ namespace mouse {
 
         inline ContextMenuBuilder& addItem(
             std::string const& text,
-            std::string const& callbackID
+            std::string const& callbackID,
+            float ratio = 1.f
         ) {
             this->result["items"].as_array().push_back(json::Object {
                 { "text", text },
                 { "click", callbackID },
+                { "ratio", ratio },
             });
             return *this;
         }
@@ -114,12 +116,14 @@ namespace mouse {
         inline ContextMenuBuilder& addItem(
             std::string const& iconFrame,
             std::string const& text,
-            std::string const& callbackID
+            std::string const& callbackID,
+            float ratio = 1.f
         ) {
             this->result["items"].as_array().push_back(json::Object {
                 { "text", text },
                 { "frame", iconFrame },
                 { "click", callbackID },
+                { "ratio", ratio },
             });
             return *this;
         }
@@ -165,14 +169,18 @@ namespace mouse {
         cocos2d::extension::CCScale9Sprite* m_hoverBG;
         cocos2d::CCPoint m_lastDrag;
         bool m_dragged = false;
+        float m_ratio = 1.f;
 
         bool init(ContextMenu* menu);
 
         void draw() override;
 
+        friend class ContextMenu;
+
     public:
         virtual void setIcon(cocos2d::CCNode* icon);
         virtual void setText(std::string const& text);
+        virtual void setRatio(float ratio);
 
         virtual float getPreferredWidth();
         virtual void fitToWidth(float width);
@@ -273,4 +281,3 @@ namespace mouse {
         void hide();
     };
 }
-

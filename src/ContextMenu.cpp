@@ -47,7 +47,7 @@ float ContextMenuItem::getPreferredWidth() {
         width += m_label->getScaledContentSize().width;
     }
     width += style.height;
-    return width;
+    return width / m_ratio;
 }
 
 void ContextMenuItem::fitToWidth(float width) {
@@ -96,6 +96,10 @@ void ContextMenuItem::setText(std::string const& text) {
         m_label->setPosition(style.height, style.height / 2);
         this->addChild(m_label);
     }
+}
+
+void ContextMenuItem::setRatio(float ratio) {
+    m_ratio = ratio;
 }
 
 void ContextMenuItem::draw() {
@@ -164,9 +168,14 @@ DragMenuItem* DragMenuItem::create(ContextMenu* menu, std::string const& eventID
 
 void DragMenuItem::updateText() {
     if (!m_label) {
-        this->setText("Value");
+        this->setText("");
     }
-    m_label->setString(fmt::format("{}: {}", m_text, m_value).c_str());
+    if (m_text.size()) {
+        m_label->setString(fmt::format("{}: {}", m_text, m_value).c_str());
+    }
+    else {
+        m_label->setString(fmt::format("{}", m_value).c_str());
+    }
 }
 
 void DragMenuItem::setText(std::string const& text) {
@@ -314,7 +323,6 @@ bool ContextMenu::init(CCNode* target, json::Value const& json, ContextMenu* par
     m_container->setLayout(
         RowLayout::create()
             ->setGrowCrossAxis(true)
-            ->setCrossAxisOverflow(false)
             ->setAxisAlignment(AxisAlignment::Even)
             ->setGap(m_style.itemGap)
     );
@@ -420,6 +428,14 @@ void ContextMenu::parseItems(json::Value const& value) {
                 continue;
             }
         }
+        if (obj.count("ratio")) {
+            try {
+                item->setRatio(static_cast<float>(obj["ratio"].as_double()));
+            } catch(...) {
+                items.push_back(this->createError("Invalid \"ratio\""));
+                continue;
+            }
+        }
         items.push_back(item);
     }
 
@@ -436,17 +452,16 @@ void ContextMenu::parseItems(json::Value const& value) {
 
     for (auto& item : items) {
         m_container->addChild(item);
-        item->fitToWidth(width);
+        item->fitToWidth(width * item->m_ratio);
         item->updateLayout();
     }
     auto containerHeight = static_cast<RowLayout*>(m_container->getLayout())
         ->getSizeHint(m_container).height;
     
-    auto height = clamp(containerHeight, 0.f, m_style.maxHeight);
-
-    m_container->setContentSize({ width, height });
+    m_container->setContentSize({ width, containerHeight });
     m_container->updateLayout();
 
+    auto height = clamp(m_container->getScaledContentSize().height, 0.f, m_style.maxHeight);
     this->setContentSize({ width, height });
     m_bg->setContentSize(m_obContentSize / m_bg->getScale());
     m_bg->setPosition(m_obContentSize / 2);

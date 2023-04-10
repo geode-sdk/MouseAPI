@@ -61,6 +61,16 @@ struct $modify(CCTouchDispatcher) {
     // }
 };
 
+struct $modify(CCTextInputNode) {
+    bool ccTouchBegan(CCTouch* touch, CCEvent* event) {
+        if (m_delegate && !m_delegate->allowTextInput(this)) {
+            return false;
+        }
+        this->onClickTrackNode(true);
+        return true;
+    }
+};
+
 struct $modify(CCMenu) {
     bool initWithArray(CCArray* items) {
         if (!CCMenu::initWithArray(items))

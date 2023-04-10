@@ -512,7 +512,7 @@ struct MouseEventContainer : public CCEvent {
 	}
 };
 
-void ::postMouseEventThroughTouches(MouseEvent& event, ccTouchType action) {
+void postMouseEventThroughTouches(MouseEvent& event, ccTouchType action) {
 	auto set = CCSet::create();
 	set->addObject(event.createTouch());
 	CCTouchDispatcher::get()->touches(set, new MouseEventContainer(event), action);

@@ -356,12 +356,12 @@ void ContextMenu::parseItems(json::Value const& value) {
     if (!value.is_array()) {
         items = { this->createError("Context menu is not an array") };
     }
-    else for (auto item : value.as_array()) {
-        if (!item.is_object()) {
+    else for (auto val : value.as_array()) {
+        if (!val.is_object()) {
             items.push_back(this->createError("Item is not an object"));
             continue;
         }
-        auto obj = item.as_object();
+        auto obj = val.as_object();
         bool hasTextOrIcon = false;
         ContextMenuItem* item;
         if (obj.count("sub-menu")) {

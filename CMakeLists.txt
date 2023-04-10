@@ -8,10 +8,16 @@ file(GLOB SOURCES
 	src/*.cpp
 )
 
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+file(GLOB OBJC_SOURCES
+    src/*.mm
+)
+
+set_source_files_properties(${OBJC_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
+add_library(${PROJECT_NAME} SHARED ${SOURCES} ${OBJC_SOURCES})
 
 if (PROJECT_IS_TOP_LEVEL)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE HJFOD_MOUSEAPI_EXPORTING)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE GEODE_MOUSEAPI_EXPORTING)
 endif()
 
 if (NOT DEFINED ENV{GEODE_SDK})

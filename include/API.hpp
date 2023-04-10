@@ -1,9 +1,11 @@
 #pragma once
 
-#include <Geode/loader/Event.hpp>
+#include <Geode/Loader.hpp>
+#include <cocos2d.h>
+#include <Geode/Utils.hpp>
 
 #ifdef GEODE_IS_WINDOWS
-    #ifdef HJFOD_MOUSEAPI_EXPORTING
+    #ifdef GEODE_MOUSEAPI_EXPORTING
         #define MOUSEAPI_DLL __declspec(dllexport)
     #else
         #define MOUSEAPI_DLL __declspec(dllimport)
@@ -71,8 +73,8 @@ namespace mouse {
         geode::EventListenerPool* getPool() const override;
 
         friend class MouseEventFilter;
-        friend struct CCTouchDispatcherModify;
-        friend class MouseEventListenerPool;
+        friend struct ::CCTouchDispatcherModify;
+        friend class ::MouseEventListenerPool;
     
     public:
         bool isSwallowed() const;
@@ -173,6 +175,7 @@ namespace mouse {
         geode::ListenerResult handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event);
         geode::EventListenerPool* getPool() const;
         MouseEventFilter(cocos2d::CCNode* target, bool ignorePosition = false);
+        MouseEventFilter(MouseEventFilter const&) = default;
         ~MouseEventFilter();
 
         std::optional<geode::WeakRef<cocos2d::CCNode>> getTarget() const;
@@ -181,8 +184,10 @@ namespace mouse {
     };
 
     class MOUSEAPI_DLL Mouse {
-    protected:
+    public:
+        // i'm not gonna bother with friending an objc class
         std::unordered_set<MouseButton> m_heldButtons;
+    protected:
         static inline std::atomic_bool s_updating = false;
 
         friend struct ::CCEGLViewModify;

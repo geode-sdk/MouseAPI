@@ -84,29 +84,6 @@ struct $modify(CCMenu) {
     }
 };
 
-struct $modify(CCTextInputNode) {
-    bool init(float width, float height, const char* caption, const char* thonburi, int maxCharCount, const char* font) {
-        if (!CCTextInputNode::init(width, height, caption, thonburi, maxCharCount, font))
-            return false;
-        
-        this->template addEventListener<MouseEventFilter>(
-            "mouse"_spr,
-            [=](MouseEvent* ev) {
-                auto bbox = this->boundingBox();
-                bbox.origin -= this->getContentSize() * this->getAnchorPoint();
-                if (bbox.containsPoint(this->getParent()->convertToNodeSpace(ev->getPosition()))) {
-                    return MouseResult::Swallow;
-                }
-                return MouseResult::Leave;
-            },
-            true
-        );
-        Mouse::updateListeners();
-
-        return true;
-    }
-};
-
 struct $modify(AchievementNotifier) {
     void willSwitchToScene(CCScene* scene) {
         AchievementNotifier::willSwitchToScene(scene);

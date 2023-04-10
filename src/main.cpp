@@ -73,15 +73,15 @@ public:
 				return ap.size() > bp.size();
 			}
 		);
-		log::debug("sorting done");
-		for (auto a : m_listeners) {
-			if (!a) continue;
-			auto af = static_cast<MouseListener*>(a);
-			log::debug("{}: {}",
-				af->getFilter().getTargetPriority(),
-				af->getFilter().getTarget().value_or(nullptr).data()
-			);
-		}
+		// log::debug("sorting done");
+		// for (auto a : m_listeners) {
+		// 	if (!a) continue;
+		// 	auto af = static_cast<MouseListener*>(a);
+		// 	log::debug("{}: {}",
+		// 		af->getFilter().getTargetPriority(),
+		// 		af->getFilter().getTarget().value_or(nullptr).data()
+		// 	);
+		// }
 		m_locked -= 1;
 		m_sorting = false;
 	}

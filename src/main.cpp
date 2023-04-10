@@ -38,23 +38,6 @@ public:
 		m_sorting = true;
 		// log::debug("sortListeners");
 		m_locked += 1;
-		// trigger all WeakRef locks (and frees) here because if they happen in 
-		// the middle of the sort that causes their event listeners to be freed 
-		// aswell which makes them try to mutate m_listeners which is totally UB 
-		// while it's being sorted
-		// has to be double-iterated because it might be that a WeakRef that is 
-		// freed in the loop is the only other ref to another WeakRef in the loop 
-		// which would then promptly be freed during the sort
-		for (auto _ : m_listeners) {
-			for (auto a : m_listeners) {
-				if (a) {
-					auto filter = static_cast<MouseListener*>(a)->getFilter();
-					if (auto target = filter.getTarget()) {
-						target.value().valid();
-					}
-				}
-			}
-		}
 		// log::debug("sorting");
 		// sort all mouse listeners to put the nodes closer on the screen at the front
 		std::sort(
@@ -94,12 +77,9 @@ public:
 		// for (auto a : m_listeners) {
 		// 	if (!a) continue;
 		// 	auto af = static_cast<MouseListener*>(a);
-		// 	log::info("af: {}", af);
 		// 	log::debug("{}: {}",
 		// 		af->getFilter().getTargetPriority(),
-		// 		af->getFilter().getTarget()
-		// 			.value_or(WeakRef<CCNode>(nullptr))
-		// 			.lock().data()
+		// 		af->getFilter().getTarget().value_or(nullptr).data()
 		// 	);
 		// }
 		m_locked -= 1;
@@ -113,7 +93,7 @@ public:
 	cocos2d::CCNode* getCapturingNode() const {
 		if (m_capturing) {
 			if (auto target = m_capturing->getFilter().getTarget()) {
-				return target.value().lock().data();
+				return target.value().data();
 			}
 		}
 		return nullptr;
@@ -309,7 +289,7 @@ bool MouseHoverEvent::isLeave() const {
 
 ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
 	if (m_target.has_value()) {
-		auto target = m_target.value().lock();
+		auto target = m_target.value();
 		if (!target || !nodeIsVisible(target) || !target->hasAncestor(nullptr)) {
 			return ListenerResult::Propagate;
 		}
@@ -438,13 +418,12 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 	}
 }
 
-std::optional<geode::WeakRef<cocos2d::CCNode>> MouseEventFilter::getTarget() const {
+std::optional<geode::Ref<cocos2d::CCNode>> MouseEventFilter::getTarget() const {
 	return m_target;
 }
 
 std::vector<int> MouseEventFilter::getTargetPriority() const {
-	if (!m_target.has_value()) return {};
-	auto node = m_target.value().lock();
+	auto node = m_target.value_or(nullptr);
 	if (!node) return {};
 	std::vector<int> tree {};
 	while (auto parent = node->getParent()) {
@@ -463,7 +442,7 @@ size_t MouseEventFilter::getFilterIndex() const {
 }
 
 MouseEventFilter::MouseEventFilter(CCNode* target, bool ignorePosition)
-  : m_target(target ? std::optional(WeakRef(target)) : std::nullopt),
+  : m_target(target ? std::optional(target) : std::nullopt),
   	m_ignorePosition(ignorePosition),
   	m_filterIndex(target ? target->getEventListenerCount() : 0)
 {}

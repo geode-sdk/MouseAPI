@@ -162,7 +162,7 @@ namespace mouse {
 
     class MOUSEAPI_DLL MouseEventFilter : public geode::EventFilter<MouseEvent> {
     protected:
-        std::optional<geode::WeakRef<cocos2d::CCNode>> m_target;
+        std::optional<geode::Ref<cocos2d::CCNode>> m_target;
         geode::Ref<cocos2d::CCTouch> m_eaten = nullptr;
         bool m_ignorePosition = false;
         size_t m_filterIndex = 0;
@@ -175,7 +175,7 @@ namespace mouse {
         MouseEventFilter(cocos2d::CCNode* target, bool ignorePosition = false);
         ~MouseEventFilter();
 
-        std::optional<geode::WeakRef<cocos2d::CCNode>> getTarget() const;
+        std::optional<geode::Ref<cocos2d::CCNode>> getTarget() const;
         std::vector<int> getTargetPriority() const;
         size_t getFilterIndex() const;
     };

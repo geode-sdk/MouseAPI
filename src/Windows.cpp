@@ -74,15 +74,13 @@ static GLFWcursorposfun originalCursorPosFun = nullptr;
 
 void __cdecl glfwPosCallback(GLFWwindow* window, double x, double y) {
 	originalCursorPosFun(window, x, y);
-	Loader::get()->queueInGDThread([=]() {
-		auto event = MouseMoveEvent(Mouse::get()->getCapturingNode(), convertMouseCoords(x, y));
-		postMouseEventThroughTouches(
-			event,
-			(Mouse::get()->isHeld(MouseButton::Left) ?
-				CCTOUCHMOVED :
-				CCTOUCHOTHER)
-		);
-	});
+    auto event = MouseMoveEvent(Mouse::get()->getCapturingNode(), convertMouseCoords(x, y));
+    postMouseEventThroughTouches(
+        event,
+        (Mouse::get()->isHeld(MouseButton::Left) ?
+            CCTOUCHMOVED :
+            CCTOUCHOTHER)
+    );
 }
 
 void setCursorPosCallback(GLFWwindow* window) {
@@ -106,25 +104,23 @@ struct $modify(CCEGLViewModify, CCEGLView) {
 	}
 
 	void onGLFWMouseCallBack(GLFWwindow* window, int button, int action, int mods) {
-		Loader::get()->queueInGDThread([=]() {
-			if (action) {
-				Mouse::get()->m_heldButtons.insert(static_cast<MouseButton>(button));
-			}
-			else {
-				Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
-			}
-			auto event = MouseClickEvent(
-				Mouse::get()->getCapturingNode(),
-				static_cast<MouseButton>(button), action,
-				getMousePos()
-			);
-			postMouseEventThroughTouches(
-				event,
-				(static_cast<MouseButton>(button) == MouseButton::Left ?
-					(action ? CCTOUCHBEGAN : CCTOUCHENDED) :
-					CCTOUCHOTHER)
-			);
-		});
+        if (action) {
+            Mouse::get()->m_heldButtons.insert(static_cast<MouseButton>(button));
+        }
+        else {
+            Mouse::get()->m_heldButtons.erase(static_cast<MouseButton>(button));
+        }
+        auto event = MouseClickEvent(
+            Mouse::get()->getCapturingNode(),
+            static_cast<MouseButton>(button), action,
+            getMousePos()
+        );
+        postMouseEventThroughTouches(
+            event,
+            (static_cast<MouseButton>(button) == MouseButton::Left ?
+                (action ? CCTOUCHBEGAN : CCTOUCHENDED) :
+                CCTOUCHOTHER)
+        );
 	}
 };
 

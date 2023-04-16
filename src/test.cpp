@@ -5,7 +5,7 @@
 using namespace geode::prelude;
 using namespace mouse;
 
-// #define MOUSEAPI_TEST
+#define MOUSEAPI_TEST
 
 #ifdef MOUSEAPI_TEST
 

@@ -14,6 +14,11 @@
     #define MOUSEAPI_DLL
 #endif
 
+#ifdef _MSC_VER
+    #pragma warning(push)
+    #pragma warning(disable: 4275)
+#endif
+
 struct CCEGLViewModify;
 struct CCTouchDispatcherModify;
 class MouseEventListenerPool;
@@ -164,7 +169,7 @@ namespace mouse {
 
     class MOUSEAPI_DLL MouseEventFilter : public geode::EventFilter<MouseEvent> {
     protected:
-        std::optional<geode::Ref<cocos2d::CCNode>> m_target;
+        geode::Ref<cocos2d::CCNode> m_target;
         geode::Ref<cocos2d::CCTouch> m_eaten = nullptr;
         bool m_ignorePosition = false;
         size_t m_filterIndex = 0;
@@ -178,7 +183,7 @@ namespace mouse {
         MouseEventFilter(MouseEventFilter const&) = default;
         ~MouseEventFilter();
 
-        std::optional<geode::Ref<cocos2d::CCNode>> getTarget() const;
+        cocos2d::CCNode* getTarget() const;
         std::vector<int> getTargetPriority() const;
         size_t getFilterIndex() const;
     };
@@ -211,3 +216,7 @@ struct json::Serialize<mouse::MouseButton> {
     static json::Value MOUSEAPI_DLL to_json(mouse::MouseButton const& button);
     static mouse::MouseButton MOUSEAPI_DLL from_json(json::Value const& button);
 };
+
+#ifdef _MSC_VER
+    #pragma warning(pop)
+#endif

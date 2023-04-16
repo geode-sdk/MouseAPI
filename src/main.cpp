@@ -6,116 +6,7 @@
 #include <Geode/cocos/robtop/glfw/glfw3.h>
 #include <json/stl_serialize.hpp>
 #include "Platform.hpp"
-
-using namespace geode::prelude;
-using namespace mouse;
-
-using MouseListener = EventListener<MouseEventFilter>;
-
-class MouseEventListenerPool : public geode::DefaultEventListenerPool {
-protected:
-	MouseListener* m_capturing = nullptr;
-	std::atomic_bool m_sorting = false;
-
-public:
-	bool add(geode::EventListenerProtocol* listener) override {
-		if (typeinfo_cast<MouseListener*>(listener)) {
-			return DefaultEventListenerPool::add(listener);
-		}
-		return false;
-	}
-
-	void remove(geode::EventListenerProtocol* listener) override  {
-		this->release(static_cast<MouseListener*>(listener));
-		DefaultEventListenerPool::remove(listener);
-	}
-
-	void sortListeners() {
-		// do not allow recursive sorting to happen in any way
-		if (m_sorting) {
-			return;
-		}
-		m_sorting = true;
-		// log::debug("sortListeners");
-		m_locked += 1;
-		// log::debug("sorting");
-		// sort all mouse listeners to put the nodes closer on the screen at the front
-		std::sort(
-			m_listeners.begin(),
-			m_listeners.end(),
-			[](EventListenerProtocol* a, EventListenerProtocol* b) {
-				// listeners may be null if they are removed mid-handle iteration
-				if (!a || !b) return a > b;
-				auto af = static_cast<MouseListener*>(a)->getFilter();
-				auto bf = static_cast<MouseListener*>(b)->getFilter();
-				// if these listeners point to the same target, compare by which 
-				// listener was added first
-				if (af.getTarget() == bf.getTarget()) {
-					return af.getFilterIndex() > bf.getFilterIndex();
-				}
-				// if one of the listeners is global, that comes first
-				if (!af.getTarget().has_value()) {
-					return true;
-				}
-				if (!bf.getTarget().has_value()) {
-					return false;
-				}
-				// otherwise compare node tree indices, top nodes top bottom nodes
-				auto ap = af.getTargetPriority(); 
-				auto bp = bf.getTargetPriority();
-				for (size_t i = 0; i < ap.size(); i++) {
-					if (i < bp.size()) {
-						if (ap[i] != bp[i]) {
-							return ap[i] > bp[i];
-						}
-					}
-				}
-				return ap.size() > bp.size();
-			}
-		);
-		// log::debug("sorting done");
-		// for (auto a : m_listeners) {
-		// 	if (!a) continue;
-		// 	auto af = static_cast<MouseListener*>(a);
-		// 	log::debug("{}: {}",
-		// 		af->getFilter().getTargetPriority(),
-		// 		af->getFilter().getTarget().value_or(nullptr).data()
-		// 	);
-		// }
-		m_locked -= 1;
-		m_sorting = false;
-	}
-
-	MouseListener* getCapturing() const {
-		return m_capturing;
-	}
-
-	cocos2d::CCNode* getCapturingNode() const {
-		if (m_capturing) {
-			if (auto target = m_capturing->getFilter().getTarget()) {
-				return target.value().data();
-			}
-		}
-		return nullptr;
-	}
-
-	void capture(MouseListener* listener) {
-		if (!m_capturing) {
-			m_capturing = listener;
-		}
-	}
-
-	void release(MouseListener* listener) {
-		if (m_capturing == listener) {
-			m_capturing = nullptr;
-		}
-	}
-
-	static MouseEventListenerPool* get() {
-		static auto inst = new MouseEventListenerPool();
-		return inst;
-	}
-};
+#include "Pool.hpp"
 
 json::Value json::Serialize<MouseButton>::to_json(MouseButton const& button) {
 	return static_cast<int>(button);
@@ -287,9 +178,9 @@ bool MouseHoverEvent::isLeave() const {
 	return !m_enter;
 }
 
-ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event) {
-	if (m_target.has_value()) {
-		auto target = m_target.value();
+ListenerResult MouseEventFilter::handle(utils::MiniFunction<Callback> fn, MouseEvent* event) {
+	if (m_target) {
+		auto target = m_target;
 		if (!target || !nodeIsVisible(target) || !target->hasAncestor(nullptr)) {
 			return ListenerResult::Propagate;
 		}
@@ -418,13 +309,13 @@ ListenerResult MouseEventFilter::handle(geode::utils::MiniFunction<Callback> fn,
 	}
 }
 
-std::optional<geode::Ref<cocos2d::CCNode>> MouseEventFilter::getTarget() const {
+CCNode* MouseEventFilter::getTarget() const {
 	return m_target;
 }
 
 std::vector<int> MouseEventFilter::getTargetPriority() const {
-	auto node = m_target.value_or(nullptr);
-	if (!node) return {};
+	if (!m_target) return {};
+	auto node = m_target;
 	std::vector<int> tree {};
 	while (auto parent = node->getParent()) {
 		tree.insert(tree.begin(), parent->getChildren()->indexOfObject(node));
@@ -442,7 +333,7 @@ size_t MouseEventFilter::getFilterIndex() const {
 }
 
 MouseEventFilter::MouseEventFilter(CCNode* target, bool ignorePosition)
-  : m_target(target ? std::optional(target) : std::nullopt),
+  : m_target(target),
   	m_ignorePosition(ignorePosition),
   	m_filterIndex(target ? target->getEventListenerCount() : 0)
 {}
@@ -472,7 +363,7 @@ EventListener<MouseEventFilter>* Mouse::getCapturing() const {
 	return MouseEventListenerPool::get()->getCapturing();
 }
 
-cocos2d::CCNode* Mouse::getCapturingNode() const {
+CCNode* Mouse::getCapturingNode() const {
 	return MouseEventListenerPool::get()->getCapturingNode();
 }
 

@@ -5,6 +5,7 @@
 #include <Geode/modify/CCTextInputNode.hpp>
 #include <Geode/utils/cocos.hpp>
 #include "../include/API.hpp"
+#include "Pool.hpp"
 
 using namespace geode::prelude;
 using namespace mouse;
@@ -75,10 +76,10 @@ struct $modify(CCMenu) {
         this->template addEventListener<MouseEventFilter>(
             "mouse"_spr,
             [=](MouseEvent* ev) {
-                CCTouch touch;
-                touch.m_point = CCDirector::get()->convertToUI(ev->getPosition());
-                if (auto item = this->itemForTouch(&touch)) {
-                    return MouseResult::Swallow;
+                for (auto& child : CCArrayExt<CCNode>(m_pChildren)) {
+                    if (child->boundingBox().containsPoint(this->convertToNodeSpace(ev->getPosition()))) {
+                        return MouseResult::Swallow;
+                    }
                 }
                 return MouseResult::Leave;
             },

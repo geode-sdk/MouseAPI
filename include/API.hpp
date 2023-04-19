@@ -73,7 +73,7 @@ namespace mouse {
 
         void swallow();
         void updateTouch(cocos2d::CCTouch* touch) const;
-        virtual void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const = 0;
+        virtual void dispatchDefault(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const = 0;
 
         geode::EventListenerPool* getPool() const override;
 
@@ -97,7 +97,7 @@ namespace mouse {
         MouseButton m_button;
         bool m_down;
 
-        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
+        void dispatchDefault(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
     
     public:
         MouseClickEvent(
@@ -117,7 +117,7 @@ namespace mouse {
 
     class MOUSEAPI_DLL MouseMoveEvent : public MouseEvent {
     protected:
-        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
+        void dispatchDefault(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
 
     public:
         MouseMoveEvent(
@@ -134,7 +134,7 @@ namespace mouse {
         float m_deltaY;
         float m_deltaX;
 
-        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
+        void dispatchDefault(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
     
     public:
         MouseScrollEvent(
@@ -155,7 +155,7 @@ namespace mouse {
     protected:
         bool m_enter;
         
-        void dispatchTouch(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
+        void dispatchDefault(cocos2d::CCNode* target, cocos2d::CCTouch* touch) const override;
     
     public:
         MouseHoverEvent(
@@ -169,7 +169,7 @@ namespace mouse {
 
     class MOUSEAPI_DLL MouseEventFilter : public geode::EventFilter<MouseEvent> {
     protected:
-        geode::Ref<cocos2d::CCNode> m_target;
+        cocos2d::CCNode* m_target;
         geode::Ref<cocos2d::CCTouch> m_eaten = nullptr;
         bool m_ignorePosition = false;
         size_t m_filterIndex = 0;
@@ -179,9 +179,13 @@ namespace mouse {
 
         geode::ListenerResult handle(geode::utils::MiniFunction<Callback> fn, MouseEvent* event);
         geode::EventListenerPool* getPool() const;
+        /**
+         * @warning The target is not retained, make sure it's valid for the 
+         * entire lifetime of the filter!
+         */
         MouseEventFilter(cocos2d::CCNode* target, bool ignorePosition = false);
         MouseEventFilter(MouseEventFilter const&) = default;
-        ~MouseEventFilter();
+        virtual ~MouseEventFilter();
 
         cocos2d::CCNode* getTarget() const;
         std::vector<int> getTargetPriority() const;

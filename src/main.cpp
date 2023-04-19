@@ -78,7 +78,8 @@ CCNode* MouseEvent::getTarget() const {
 
 CCTouch* MouseEvent::createTouch() const {
 	auto touch = new CCTouch();
-	touch->autorelease();
+	// Never call autorelease on CCTouch. If you do it, at some point in the 
+	// future CCSequence::update will crash.
 	touch->m_point = CCDirector::get()->convertToUI(m_position);
 	touch->m_prevPoint = (touch->m_startPoint = touch->m_point);
 	return touch;
@@ -108,8 +109,8 @@ MouseClickEvent::MouseClickEvent(
 	MouseButton button, bool down, CCPoint const& pos
 ) : MouseClickEvent(nullptr, button, down, pos) {}
 
-void MouseClickEvent::dispatchTouch(CCNode* target, CCTouch* touch) const {
-	if (m_button == MouseButton::Left) {
+void MouseClickEvent::dispatchDefault(CCNode* target, CCTouch* touch) const {
+	if (touch && m_button == MouseButton::Left) {
 		if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
 			if (m_down) {
 				delegate->ccTouchBegan(touch, this->createEvent());
@@ -135,7 +136,8 @@ MouseMoveEvent::MouseMoveEvent(CCPoint const& pos)
 MouseMoveEvent::MouseMoveEvent(CCNode* target, CCPoint const& pos)
   : MouseEvent(target, pos) {}
 
-void MouseMoveEvent::dispatchTouch(CCNode* target, CCTouch* touch) const {
+void MouseMoveEvent::dispatchDefault(CCNode* target, CCTouch* touch) const {
+	if (!touch) return;
 	if (auto delegate = typeinfo_cast<CCTouchDelegate*>(target)) {
 		if (MouseAttributes::from(target)->isHeld(MouseButton::Left)) {
 			delegate->ccTouchMoved(touch, this->createEvent());
@@ -150,7 +152,7 @@ MouseScrollEvent::MouseScrollEvent(
 	CCNode* target, float deltaY, float deltaX, CCPoint const& pos
 ) : MouseEvent(target, pos), m_deltaY(deltaY), m_deltaX(deltaX) {}
 
-void MouseScrollEvent::dispatchTouch(CCNode* target, CCTouch*) const {
+void MouseScrollEvent::dispatchDefault(CCNode* target, CCTouch*) const {
 	if (auto delegate = typeinfo_cast<CCMouseDelegate*>(target)) {
 		delegate->scrollWheel(m_deltaY, m_deltaY);
 	}
@@ -168,7 +170,7 @@ MouseHoverEvent::MouseHoverEvent(CCNode* target, bool enter, CCPoint const& pos)
   : MouseEvent(target, pos), m_enter(enter)
 {}
 
-void MouseHoverEvent::dispatchTouch(CCNode*, CCTouch*) const {}
+void MouseHoverEvent::dispatchDefault(CCNode*, CCTouch*) const {}
 
 bool MouseHoverEvent::isEnter() const {
 	return m_enter;
@@ -251,8 +253,8 @@ ListenerResult MouseEventFilter::handle(utils::MiniFunction<Callback> fn, MouseE
 			}
 			if (m_eaten) {
 				event->updateTouch(m_eaten);
-				event->dispatchTouch(target, m_eaten);
 			}
+			event->dispatchDefault(target, m_eaten);
 			// Release eaten only after dispatching the touch event so the 
 			// touch event can still access the touch
 			if (s != MouseResult::Leave && click && !click->isDown()) {
@@ -386,6 +388,7 @@ void postMouseEventThroughTouches(MouseEvent& event, ccTouchType action) {
 	auto set = CCSet::create();
 	set->addObject(event.createTouch());
 	CCTouchDispatcher::get()->touches(set, new MouseEventContainer(event), action);
+	set->release();
 }
 
 struct $modify(CCTouchDispatcherModify, CCTouchDispatcher) {

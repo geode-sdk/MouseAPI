@@ -46,8 +46,8 @@ public:
 			[](EventListenerProtocol* a, EventListenerProtocol* b) {
 				// listeners may be null if they are removed mid-handle iteration
 				if (!a || !b) return a > b;
-				auto af = static_cast<MouseListener*>(a)->getFilter();
-				auto bf = static_cast<MouseListener*>(b)->getFilter();
+				auto& af = static_cast<MouseListener*>(a)->getFilter();
+				auto& bf = static_cast<MouseListener*>(b)->getFilter();
 				// if these listeners point to the same target, compare by which 
 				// listener was added first
 				if (af.getTarget() == bf.getTarget()) {
@@ -73,7 +73,7 @@ public:
 				return ap.size() > bp.size();
 			}
 		);
-		log::debug("sorting done: {}", m_listeners.size());
+		// log::debug("sorting done: {}", m_listeners.size());
 		// for (auto a : m_listeners) {
 		// 	if (!a) continue;
 		// 	auto af = static_cast<MouseListener*>(a);

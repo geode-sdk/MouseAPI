@@ -180,9 +180,12 @@ bool MouseHoverEvent::isLeave() const {
 	return !m_enter;
 }
 
-ListenerResult MouseEventFilter::handle(utils::MiniFunction<Callback> fn, MouseEvent* event) {
+ListenerResult MouseEventFilter::handle(MiniFunction<Callback> fn, MouseEvent* event) {
 	if (m_target) {
-		auto target = m_target;
+		// Make sure to get a Ref to the target so if it gets released during 
+		// the execution of this function for example due to ccTouchEnded then 
+		// it doesn't get freed yet and cause MouseEventFilter to get destroyed
+		Ref target { m_target };
 		if (!target || !nodeIsVisible(target) || !target->hasAncestor(nullptr)) {
 			return ListenerResult::Propagate;
 		}
@@ -317,7 +320,7 @@ CCNode* MouseEventFilter::getTarget() const {
 
 std::vector<int> MouseEventFilter::getTargetPriority() const {
 	if (!m_target) return {};
-	auto node = m_target;
+	auto node = Ref(m_target);
 	std::vector<int> tree {};
 	while (auto parent = node->getParent()) {
 		tree.insert(tree.begin(), parent->getChildren()->indexOfObject(node));

@@ -20,12 +20,14 @@ protected:
 public:
 	bool add(EventListenerProtocol* listener) override {
 		if (typeinfo_cast<MouseListener*>(listener)) {
+			// log::debug("adding {}", &static_cast<MouseListener*>(listener)->getFilter());
 			return DefaultEventListenerPool::add(listener);
 		}
 		return false;
 	}
 
 	void remove(EventListenerProtocol* listener) override  {
+		// log::debug("removing {} => {}", &static_cast<MouseListener*>(listener)->getFilter(), listener);
 		this->release(static_cast<MouseListener*>(listener));
 		DefaultEventListenerPool::remove(listener);
 	}
@@ -75,12 +77,13 @@ public:
 		);
 		// log::debug("sorting done: {}", m_listeners.size());
 		// for (auto a : m_listeners) {
-		// 	if (!a) continue;
-		// 	auto af = static_cast<MouseListener*>(a);
-		// 	log::debug("{}: {}",
-		// 		af->getFilter().getTargetPriority(),
-		// 		af->getFilter().getTarget().value_or(nullptr).data()
-		// 	);
+			// if (!a) continue;
+			// auto af = static_cast<MouseListener*>(a);
+			// log::debug("{}", &af->getFilter());
+			// log::debug("{}: {}",
+			// 	af->getFilter().getTargetPriority(),
+			// 	af->getFilter().getTarget()
+			// );
 		// }
 		m_locked -= 1;
 		m_sorting = false;
